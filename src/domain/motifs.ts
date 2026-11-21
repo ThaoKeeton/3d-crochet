@@ -277,7 +277,7 @@ export function buildGranny(rounds: number): Graph {
         if (round === 1) {
           const frame = roundOneCorner(corner, reach);
           emitShell(b, round, frame, insertCorner, edge, `c-${round - 1}-${corner}`);
-          const arc = chainBulge(b.last() ?? frame.p, roundOneCorner((corner + 1) % 4, reach).p, frame.out, 0.46);
+          const arc = chainBulge(b.last() ?? frame.p, roundOneCorner((corner + 1) % 4, reach).p, frame.out, 0.34);
           const space = emitChains(b, round, arc, 2, edge, 'corner');
           nextCorners[corner] = space;
           b.addSpace({ id: `c-${round}-${corner}`, round, kind: 'corner', at: space });
@@ -285,7 +285,7 @@ export function buildGranny(rounds: number): Graph {
           const lead = cornerShell(corner, reach, -1);
           const trail = cornerShell(corner, reach, 1);
           emitShell(b, round, lead, insertCorner, edge, `c-${round - 1}-${corner}`);
-          const cornerArc = chainBulge(b.last() ?? lead.p, trail.p, norm(add(lead.out, trail.out)), 0.5);
+          const cornerArc = chainBulge(b.last() ?? lead.p, trail.p, norm(add(lead.out, trail.out)), 0.4);
           const space = emitChains(b, round, cornerArc, 2, edge, 'corner');
           nextCorners[corner] = space;
           b.addSpace({ id: `c-${round}-${corner}`, round, kind: 'corner', at: space });
@@ -296,7 +296,7 @@ export function buildGranny(rounds: number): Graph {
             const along = (g + 1) / (groups + 1);
             const frame = sideFrame(side, along, reach);
             const approach = mulAdd(frame.p, frame.tangent, -0.62);
-            const gap = chainBulge(b.last() ?? approach, approach, frame.out, 0.16);
+            const gap = chainBulge(b.last() ?? approach, approach, frame.out, 0.22);
             const sideSpace = emitChains(b, round, gap, 1, edge, 'side');
             nextSides[side].push(sideSpace);
             b.addSpace({ id: `s-${round}-${side}-${g}`, round, kind: 'side', at: sideSpace });
@@ -304,7 +304,7 @@ export function buildGranny(rounds: number): Graph {
             emitShell(b, round, frame, into, edge, `s-${round - 1}-${side}-${g}`);
           }
           const nextLead = cornerShell((corner + 1) % 4, reach, -1);
-          const closing = chainBulge(b.last() ?? nextLead.p, nextLead.p, sideFrame(side, 0.96, reach).out, 0.16);
+          const closing = chainBulge(b.last() ?? nextLead.p, nextLead.p, sideFrame(side, 0.96, reach).out, 0.2);
           const tailSpace = emitChains(b, round, closing, 1, edge, 'side');
           nextSides[side].push(tailSpace);
           b.addSpace({ id: `s-${round}-${side}-tail`, round, kind: 'side', at: tailSpace });
@@ -368,11 +368,65 @@ function emitShell(
   into: string,
 ) {
   for (let i = 0; i < 3; i++) {
-    const offset = (i - 1) * 0.3;
-    const head = mulAdd(frame.p, frame.tangent, offset);
-    const foot = mulAdd(insert, frame.tangent, offset * 0.22);
-    emitPost(b, 'dc', round, head, foot, frame.tangent, edge, [into]);
+    const offset = (i - 1) * 0.2;
+    const head = add(mulAdd(frame.p, frame.tangent, offset), scale(frame.out, 0.03));
+    const aim = mulAdd(insert, frame.tangent, offset * 0.08);
+    emitCluster(b, round, head, clusterFoot(head, aim), frame.tangent, edge, [into]);
   }
+}
+
+/** A short double-crochet that stays inside its 3-dc cluster. */
+function emitCluster(
+  b: GraphBuilder,
+  round: number,
+  head: Vec3,
+  foot: Vec3,
+  tangent: Vec3,
+  edge: EdgeId | null,
+  into: string[],
+) {
+  const prev = b.last();
+  const from = prev ?? mulAdd(head, tangent, -0.18);
+  b.stitch({
+    kind: 'dc',
+    round,
+    edge,
+    into,
+    insertion: foot,
+    parts: clusterParts(from, head, foot, tangent),
+  });
+}
+
+function clusterParts(from: Vec3, head: Vec3, foot: Vec3, tangent: Vec3): StitchPart[] {
+  const top: Vec3 = [head[0], head[1], head[2] + 0.08];
+  const mid = lerp(top, foot, 0.5);
+  const belly: Vec3 = [mid[0], mid[1], mid[2] + 0.04];
+  const exit = mulAdd(head, tangent, 0.12);
+  const approach = dist(from, top) > 0.85 ? outwardJoin(from, top) : [from, lerp(from, top, 0.6), top];
+  return [
+    { beat: 'wrap', points: approach },
+    { beat: 'insert', points: [top, belly, foot] },
+    { beat: 'pull', points: [foot, belly, top] },
+    { beat: 'finish', points: [top, exit] },
+  ];
+}
+
+/** Keep a long move on the outside of the square instead of a spoke across a space. */
+function outwardJoin(from: Vec3, to: Vec3): Vec3[] {
+  const mid = lerp(from, to, 0.5);
+  const away = norm([mid[0], mid[1], 0]);
+  const lift = add(mid, scale(away, Math.min(0.9, dist(from, to) * 0.28)));
+  lift[2] += 0.06;
+  return [from, lerp(from, lift, 0.45), lift, lerp(lift, to, 0.55), to];
+}
+
+/** Keep each double-crochet in its cluster instead of a spoke across the square. */
+function clusterFoot(head: Vec3, insert: Vec3): Vec3 {
+  const gap = dist(head, insert);
+  const drop = 1.05;
+  if (gap <= drop || gap < 0.001) return insert;
+  const foot = lerp(head, insert, drop / gap);
+  return [foot[0], foot[1], Math.max(0.04, foot[2])];
 }
 
 function emitChains(

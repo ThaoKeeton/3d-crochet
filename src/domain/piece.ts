@@ -49,10 +49,12 @@ export function bendPoint(mod: ModuleInstance, p: Vec3): Vec3 {
   const graph = moduleGraph(mod);
   const ySpan = Math.max(0.001, graph.max[1] - graph.min[1]);
   const xSpan = Math.max(0.001, graph.max[0] - graph.min[0]);
-  const up = clamp((p[1] - graph.min[1]) / (ySpan * 0.48), 0, 1);
+  const up = clamp((p[1] - graph.min[1]) / (ySpan * 0.7), 0, 1);
   const side = clamp(Math.abs(p[0] - graph.center[0]) / (xSpan * 0.5), 0, 1);
-  const bend = (1 - up) * (1 - up) * (1 - side * 0.95) * mod.bend;
-  return [p[0], p[1] + bend * 0.04, p[2] - bend];
+  // A shallow tuck. Corners stay put so the side seams meet, and the middle
+  // only eases in — the base is a hem, not a point.
+  const bend = (1 - up) * (1 - up) * (1 - side * 0.94) * mod.bend * 0.34;
+  return [p[0], p[1] + bend * 0.02, p[2] - bend];
 }
 
 export function worldEdge(mod: ModuleInstance, edgeId: EdgeId): { points: Vec3[]; center: Vec3; count: number } | null {
@@ -78,7 +80,7 @@ export function bagPreset(): Piece {
     position,
     rotation,
     scale: 1,
-    bend: reach * 0.72,
+    bend: reach * 0.55,
     form: 'wall',
   });
   const strapLength = reach * Math.PI * 0.72;
@@ -362,15 +364,38 @@ export function seamPolyline(piece: Piece, seam: Seam): Vec3[] {
   return pts;
 }
 
-export function gatherPolyline(mod: ModuleInstance): Vec3[] {
-  const edge = worldEdge(mod, 's');
-  if (!edge) return [];
-  const center: Vec3 = [0, 0.02, 0];
+export function floorPolyline(piece: Piece): Vec3[] {
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+  let found = false;
+  for (const mod of piece.modules) {
+    if (mod.form !== 'wall') continue;
+    const edge = worldEdge(mod, 's');
+    if (!edge) continue;
+    found = true;
+    for (const p of edge.points) {
+      minX = Math.min(minX, p[0]);
+      maxX = Math.max(maxX, p[0]);
+      minZ = Math.min(minZ, p[2]);
+      maxZ = Math.max(maxZ, p[2]);
+    }
+  }
+  if (!found || maxX - minX < 0.4 || maxZ - minZ < 0.4) return [];
+  const pad = 0.28;
+  const x0 = minX + pad;
+  const x1 = maxX - pad;
+  const z0 = minZ + pad;
+  const z1 = maxZ - pad;
+  const rows = Math.max(8, Math.round((z1 - z0) / 0.24));
   const pts: Vec3[] = [];
-  edge.points.forEach((p, index) => {
-    if (index % 2) return;
-    pts.push(p, lerp(p, center, 0.55), center);
-  });
+  for (let i = 0; i <= rows; i++) {
+    const z = z0 + ((z1 - z0) * i) / rows;
+    const a: Vec3 = [x0, 0.05, z];
+    const b: Vec3 = [x1, 0.05, z];
+    pts.push(...(i % 2 === 0 ? [a, b] : [b, a]));
+  }
   return pts;
 }
 

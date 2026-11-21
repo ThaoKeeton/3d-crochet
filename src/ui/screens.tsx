@@ -134,10 +134,16 @@ export function LearnHome() {
   );
 }
 
+function stepAtStitch(steps: { stitchIndex: number }[], stitch: number) {
+  const found = steps.findIndex((step) => step.stitchIndex >= stitch);
+  return found < 0 ? 0 : found;
+}
+
 export function LessonScreen({ id }: { id: string }) {
   const lesson = getLesson(id);
   const { settings, setWorld, makeColors, setMakeColor, markLesson, cameraMode, setCameraMode } = useApp();
-  const play = usePlayback(lesson.steps, settings.speed, settings.reduceMotion);
+  const opening = lesson.id === 'chain' ? stepAtStitch(lesson.steps, 2) : 0;
+  const play = usePlayback(lesson.steps, settings.speed, settings.reduceMotion, opening);
   const color = makeColors[id] ?? lesson.color;
   const step = lesson.steps[play.index];
   const markRef = useRef(markLesson);

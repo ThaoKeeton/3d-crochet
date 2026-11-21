@@ -3,7 +3,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { add, dist, lerp as lerpVec, norm, scale, transformPoint, type Vec3 } from '@/domain/math';
-import { bendPoint, gatherPolyline, moduleGraph, seamPolyline, strapArch } from '@/domain/piece';
+import { bendPoint, floorPolyline, moduleGraph, seamPolyline, strapArch } from '@/domain/piece';
 import { hookEyePose, overviewPose } from '@/domain/teach';
 import type { Graph, Piece, TeachStep } from '@/domain/types';
 import { useApp } from '@/state/store';
@@ -265,7 +265,7 @@ function Craft({ quality }: { quality: 'high' | 'low' }) {
           {world.kind === 'teach' && (
             <>
               <HookMesh pose={pose} />
-              <YarnBall position={[world.graph.min[0] - 1.6, 0.62, -0.4]} color={world.color} />
+              <YarnBall position={[world.graph.min[0] - 1.15, 0.5, 0.12]} color={world.color} />
               <mesh ref={insertRef} visible={false}>
                 <torusGeometry args={[0.18, 0.03, 8, 28]} />
                 <meshStandardMaterial color="#fff4df" emissive="#fff4df" emissiveIntensity={0.5} side={THREE.DoubleSide} />
@@ -343,13 +343,14 @@ function ComposeBody({
         const points = seamPolyline(piece, seam).map((p, index, all) => ({ p, along: index / Math.max(1, all.length - 1) }));
         return <YarnMesh key={seam.id} points={points} color={issues.has(seam.id) ? '#a33b32' : '#d7b48a'} radius={radius * 0.72} radial={Math.max(5, radial - 2)} />;
       })}
-      {piece.gather &&
-        piece.modules
-          .filter((mod) => mod.form === 'wall')
-          .map((mod) => {
-            const points = gatherPolyline(mod).map((p, index, all) => ({ p, along: index / Math.max(1, all.length - 1) }));
-            return <YarnMesh key={`g-${mod.id}`} points={points} color="#e4c9a4" radius={radius * 0.55} radial={5} />;
-          })}
+      {piece.gather && (
+        <YarnMesh
+          points={floorPolyline(piece).map((p, index, all) => ({ p, along: index / Math.max(1, all.length - 1) }))}
+          color={piece.modules.find((mod) => mod.form === 'wall')?.color ?? '#e08a4f'}
+          radius={radius * 1.15}
+          radial={8}
+        />
+      )}
     </group>
   );
 }
@@ -369,7 +370,7 @@ function ModuleView({
   onSelect: (id: string) => void;
   onMove: (id: string, position: Vec3) => void;
 }) {
-  const shapeKey = `${mod.kind}:${mod.form}:${mod.bend}:${mod.params.rounds ?? ''}:${mod.params.rows ?? ''}:${mod.params.width ?? ''}:${mod.params.stitches ?? ''}:${mod.params.span ?? ''}:${mod.params.rise ?? ''}`;
+  const shapeKey = `v4:${mod.kind}:${mod.form}:${mod.bend}:${mod.params.rounds ?? ''}:${mod.params.rows ?? ''}:${mod.params.width ?? ''}:${mod.params.stitches ?? ''}:${mod.params.span ?? ''}:${mod.params.rise ?? ''}`;
   const points = shapeCache.get(shapeKey) ?? shapedModule(mod);
   if (!shapeCache.has(shapeKey)) shapeCache.set(shapeKey, points);
   const graph = moduleGraph(mod);
@@ -378,7 +379,7 @@ function ModuleView({
   const size = Math.max(graph.size[0], graph.size[1], graph.size[2], 1.2);
   return (
     <group position={mod.position} quaternion={quaternion} scale={mod.scale}>
-      <YarnMesh points={points} color={mod.color} radius={radius} radial={radial} selected={selected} />
+      <YarnMesh points={points} color={mod.color} radius={mod.kind === 'granny' ? radius * 1.05 : radius} radial={radial} selected={selected} />
       <mesh
         visible={false}
         onPointerDown={(event) => {
@@ -402,20 +403,65 @@ function ModuleView({
   );
 }
 
+function onSphere(radius: number, lat: number, lon: number): Vec3 {
+  return [Math.cos(lon) * Math.cos(lat) * radius, Math.sin(lat) * radius, Math.sin(lon) * Math.cos(lat) * radius];
+}
+
+function woundBall(radius: number): YarnPoint[] {
+  const pts: Vec3[] = [];
+  const bands = 8;
+  for (let b = 0; b < bands; b++) {
+    const lat = ((b + 0.5) / bands - 0.5) * Math.PI * 0.86;
+    const phase = b * 0.55;
+    if (pts.length) {
+      const prev = pts[pts.length - 1];
+      const next = onSphere(radius, lat, phase);
+      for (let s = 1; s <= 4; s++) pts.push(lerpVec(prev, next, s / 4));
+    }
+    const n = 28;
+    for (let i = 0; i <= n; i++) {
+      const a = phase + (i / n) * Math.PI * 2;
+      const wobble = radius * (1 + 0.03 * Math.sin(a * 3 + b));
+      pts.push(onSphere(wobble, lat, a));
+    }
+  }
+  const turns = 5;
+  const steps = turns * 32;
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const lat = (t - 0.5) * Math.PI * 0.9;
+    const lon = t * turns * Math.PI * 2 + 1.2;
+    const next = onSphere(radius * 1.04, lat, lon);
+    if (i === 0 && pts.length) {
+      const prev = pts[pts.length - 1];
+      for (let s = 1; s <= 3; s++) pts.push(lerpVec(prev, next, s / 3));
+    }
+    pts.push(next);
+  }
+  return pts.map((p, index) => ({ p, along: index / Math.max(1, pts.length - 1) }));
+}
+
 function YarnBall({ position, color }: { position: Vec3; color: string }) {
-  const material = useMemo(() => createYarnMaterial(color), [color]);
-  useEffect(() => () => material.dispose(), [material]);
+  const windings = useMemo(() => [woundBall(0.5)], []);
+  const tail = useMemo<YarnPoint[]>(
+    () =>
+      (
+        [
+          [0.02, 0.46, 0.04],
+          [0.32, 0.2, 0.12],
+          [0.7, 0.06, 0.08],
+          [1.12, 0.02, 0.0],
+          [1.5, 0.08, -0.02],
+        ] as Vec3[]
+      ).map((p, index, all) => ({ p, along: index / (all.length - 1) })),
+    [],
+  );
   return (
     <group position={position}>
-      <mesh material={material} castShadow>
-        <sphereGeometry args={[0.52, 24, 16]} />
-      </mesh>
-      <mesh material={material} rotation={[0.5, 0.2, 0.4]} castShadow>
-        <torusGeometry args={[0.42, 0.1, 8, 24]} />
-      </mesh>
-      <mesh material={material} rotation={[1.1, 0.8, 0.2]} castShadow>
-        <torusGeometry args={[0.36, 0.09, 8, 20]} />
-      </mesh>
+      {windings.map((points, index) => (
+        <YarnMesh key={index} points={points} color={color} radius={0.078} radial={8} />
+      ))}
+      <YarnMesh points={tail} color={color} radius={0.13} radial={10} />
     </group>
   );
 }
@@ -552,13 +598,16 @@ function desiredPose(world: World, mode: CameraMode): { position: Vec3; target: 
   const step = world.steps[Math.max(0, world.play.current.index)] ?? world.steps[0];
   if (!step) return { position: overview.camera, target: overview.target, focus: overview.target };
   const mid = lerpVec(step.hookTip, step.focus, mode === 'hook' ? 0.32 : 0.45);
-  const span = dist(step.hookTip, step.focus) + (mode === 'hook' ? 1.8 : 2.2);
-  const posed = overviewPose([mid[0], mid[1] + 0.35, mid[2]], Math.max(mode === 'hook' ? 2.1 : 2.5, span * 0.72));
+  const chainStrip = step.kind === 'ch' && graph.size[0] > graph.size[1] * 1.6;
+  const formed: Vec3 = [step.focus[0] - 1.45, step.focus[1], step.focus[2]];
+  const anchor = chainStrip ? lerpVec(mid, formed, step.stitchIndex <= 4 ? 0.46 : 0.18) : mid;
+  const span = dist(step.hookTip, step.focus) + (chainStrip && step.stitchIndex <= 4 ? 3.3 : mode === 'hook' ? 1.8 : 2.2);
+  const posed = overviewPose([anchor[0], anchor[1] + 0.35, anchor[2]], Math.max(mode === 'hook' ? 2.1 : 2.6, span * 0.72));
   if (mode === 'hook') {
     const eye = hookEyePose(mid, step.hookDir);
     return { position: eye.camera, target: mid, focus: mid };
   }
-  return { position: posed.camera, target: mid, focus: mid };
+  return { position: posed.camera, target: anchor, focus: anchor };
 }
 
 function Studio() {

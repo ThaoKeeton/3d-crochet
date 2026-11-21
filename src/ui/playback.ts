@@ -4,12 +4,14 @@ export interface Playable {
   stitchId: string;
 }
 
-export function usePlayback(steps: Playable[], speed: number, reduce: boolean) {
-  const [index, setIndex] = useState(0);
+export function usePlayback(steps: Playable[], speed: number, reduce: boolean, startIndex = 0) {
+  const startRef = useRef(startIndex);
+  startRef.current = startIndex;
+  const [index, setIndex] = useState(() => Math.max(0, startIndex));
   const [playing, setPlaying] = useState(false);
   const [slow, setSlow] = useState(false);
   const [runAll, setRunAll] = useState(false);
-  const playRef = useRef({ index: 0, t: reduce ? 1 : 0, reduce });
+  const playRef = useRef({ index: Math.max(0, startIndex), t: reduce ? 1 : 0, reduce });
   const stepsRef = useRef(steps);
   stepsRef.current = steps;
   playRef.current.index = index;
@@ -17,11 +19,12 @@ export function usePlayback(steps: Playable[], speed: number, reduce: boolean) {
   const signature = steps[0]?.stitchId ?? 'empty';
 
   useEffect(() => {
-    setIndex(0);
+    const start = Math.max(0, Math.min(stepsRef.current.length - 1, startRef.current));
+    setIndex(start);
     setPlaying(false);
     playRef.current.t = reduce ? 1 : 0;
-    playRef.current.index = 0;
-  }, [signature, steps.length, reduce]);
+    playRef.current.index = start;
+  }, [signature, steps.length, reduce, startIndex]);
 
   useEffect(() => {
     let frame = 0;
