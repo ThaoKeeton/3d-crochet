@@ -14,10 +14,10 @@ export function createYarnMaterial(color: string, uniforms?: YarnUniforms): THRE
   const sheen = base.clone().lerp(new THREE.Color('#fff6ee'), 0.28);
   const material = new THREE.MeshPhysicalMaterial({
     color: base,
-    roughness: 0.84,
+    roughness: 0.78,
     metalness: 0,
-    sheen: 0.22,
-    sheenRoughness: 0.55,
+    sheen: 0.35,
+    sheenRoughness: 0.62,
     sheenColor: sheen,
     clearcoat: 0,
     side: THREE.DoubleSide,
@@ -55,8 +55,11 @@ varying float vAlong;`,
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
-float ply = sin((vUv.y * 2.0 + vUv.x) * 6.2831853);
-diffuseColor.rgb *= mix(0.82, 1.05, ply * 0.5 + 0.5);
+float ply = sin(vUv.y * 12.56637 + vUv.x * 2.4);
+float fiber = sin(vUv.y * 37.6991 + vUv.x * 9.0);
+float groove = smoothstep(-0.15, 0.9, ply);
+diffuseColor.rgb *= mix(0.72, 1.06, groove);
+diffuseColor.rgb *= 0.94 + 0.06 * fiber;
 if (vAlong > uDraw + 0.0008) discard;
 if (uDoneB > uDoneA && vAlong >= uDoneA && vAlong <= uDoneB) {
   diffuseColor.rgb = mix(diffuseColor.rgb, uHi, 0.28);
@@ -71,11 +74,11 @@ if (uHiB > uHiA && vAlong >= uHiA && vAlong <= uHiB) {
 
 export function hookMetal(): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({
-    color: '#f7f3ec',
-    metalness: 0.42,
-    roughness: 0.34,
-    emissive: '#8a8680',
-    emissiveIntensity: 0.35,
+    color: '#e7ebf0',
+    metalness: 0.78,
+    roughness: 0.22,
+    emissive: '#5c6168',
+    emissiveIntensity: 0.12,
     side: THREE.DoubleSide,
   });
 }

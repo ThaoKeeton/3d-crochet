@@ -42,7 +42,7 @@ p { margin: 0.3rem 0; }
   height: 100dvh;
   display: grid;
   grid-template-columns: 1fr;
-  grid-template-rows: minmax(240px, 1fr) minmax(220px, 42dvh) auto;
+  grid-template-rows: minmax(56dvh, 1.7fr) minmax(132px, 30dvh) auto;
   grid-template-areas:
     "stage"
     "sheet"

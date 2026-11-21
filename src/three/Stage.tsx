@@ -2,8 +2,8 @@ import { ContactShadows, Environment, Lightformer, OrbitControls, PerformanceMon
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { lerp as lerpVec, type Vec3 } from '@/domain/math';
-import { bendPoint, gatherPolyline, moduleGraph, pieceBounds, seamPolyline, strapArch } from '@/domain/piece';
+import { add, dist, lerp as lerpVec, norm, scale, transformPoint, type Vec3 } from '@/domain/math';
+import { bendPoint, gatherPolyline, moduleGraph, seamPolyline, strapArch } from '@/domain/piece';
 import { hookEyePose, overviewPose } from '@/domain/teach';
 import type { Graph, Piece, TeachStep } from '@/domain/types';
 import { useApp } from '@/state/store';
@@ -88,9 +88,9 @@ function YarnMesh({
   return <mesh geometry={geometry} material={material} receiveShadow />;
 }
 
-function HookMesh({ pose }: { pose: { current: { tip: Vec3; dir: Vec3 } } }) {
-  const head = useMemo(() => hookCurve(0, 0.78, 18), []);
-  const handle = useMemo(() => hookCurve(0.78, 2.35, 16), []);
+function HookMesh({ pose, scale = 1 }: { pose: { current: { tip: Vec3; dir: Vec3 } }; scale?: number }) {
+  const head = useMemo(() => hookCurve(0, 0.78, 28), []);
+  const handle = useMemo(() => hookCurve(0.78, 2.15, 22), []);
   const metal = useMemo(() => hookMetal(), []);
   const wood = useMemo(() => hookWood(), []);
   const quaternion = useMemo(() => new THREE.Quaternion(), []);
@@ -116,7 +116,7 @@ function HookMesh({ pose }: { pose: { current: { tip: Vec3; dir: Vec3 } } }) {
     group.current.position.set(tip[0], tip[1], tip[2]);
   });
   return (
-    <group ref={group} scale={0.82}>
+    <group ref={group} scale={scale}>
       <mesh geometry={head} material={metal} castShadow />
       <mesh geometry={handle} material={wood} castShadow />
     </group>
@@ -135,7 +135,7 @@ function hookCurve(from: number, to: number, steps: number) {
     const belly = t < 0.28 ? 0.05 + t * 0.22 : Math.max(shaft, 0.07);
     radii.push(t > 1.15 ? 0.07 + Math.sin((t - 1.15) * 2.2) * 0.018 : belly);
   }
-  return variableTube(pts, radii, 14);
+  return variableTube(pts, radii, 22);
 }
 
 function variableTube(points: THREE.Vector3[], radii: number[], radial: number) {
@@ -196,8 +196,8 @@ function shapedModule(mod: Piece['modules'][number]) {
 
 function Craft({ quality }: { quality: 'high' | 'low' }) {
   const { world, settings, setSelected, moveModule } = useApp();
-  const radial = quality === 'high' ? 11 : 6;
-  const radius = 0.16;
+  const radial = quality === 'high' ? 18 : 12;
+  const radius = 0.155;
   const hand = settings.hand === 'left' ? -1 : 1;
   const uniforms = useMemo<YarnUniforms>(
     () => ({
@@ -247,7 +247,7 @@ function Craft({ quality }: { quality: 'high' | 'low' }) {
       insertRef.current.scale.setScalar(showInsert ? pulse : 0.001);
       if (curr.insertion) insertRef.current.position.set(curr.insertion[0], curr.insertion[1], curr.insertion[2]);
     }
-    const showLoop = curr.beat === 'loop' || curr.beat === 'finish' || curr.beat === 'finish2';
+    const showLoop = curr.beat !== 'travel';
     if (loopRef.current) {
       loopRef.current.visible = showLoop;
       loopRef.current.scale.setScalar(showLoop ? pulse : 0.001);
@@ -276,7 +276,6 @@ function Craft({ quality }: { quality: 'high' | 'low' }) {
               </mesh>
             </>
           )}
-          {world.kind === 'still' && world.hook && <HookMesh pose={{ current: { tip: [world.graph.max[0] - 0.2, 0.72, 0.1], dir: [0.45, 0.78, 0.28] } }} />}
         </group>
       )}
     </>
@@ -299,6 +298,7 @@ function SingleBody({
   return (
     <group position={[0, lift, 0]} rotation={[world.spin, 0, 0]}>
       <YarnMesh points={points} color={world.color} radius={radius} radial={radial} uniforms={uniforms} />
+      {world.kind === 'still' && world.hook && <StillHook graph={world.graph} />}
     </group>
   );
 }
@@ -420,11 +420,64 @@ function YarnBall({ position, color }: { position: Vec3; color: string }) {
   );
 }
 
+function stillHold(graph: Graph): { tip: Vec3; dir: Vec3 } {
+  const last = graph.samples[graph.samples.length - 1]?.p ?? [0, 0.7, 0];
+  const dir = norm([0.42, 0.82, 0.38]);
+  return {
+    tip: [last[0] - 0.05, last[1] + 0.02, last[2] + 0.28],
+    dir,
+  };
+}
+
+function StillHook({ graph }: { graph: Graph }) {
+  const pose = useMemo(() => ({ current: stillHold(graph) }), [graph]);
+  const loop = graph.samples[graph.samples.length - 1]?.p ?? [0, 0.7, 0];
+  return (
+    <>
+      <HookMesh pose={pose} scale={1.2} />
+      <mesh position={loop}>
+        <torusGeometry args={[0.2, 0.03, 12, 32]} />
+        <meshStandardMaterial color="#fff6e8" emissive="#fff6e8" emissiveIntensity={0.55} side={THREE.DoubleSide} />
+      </mesh>
+    </>
+  );
+}
+
+function framePoints(points: Vec3[], margin: number): { position: Vec3; target: Vec3; focus: Vec3 } {
+  if (!points.length) return { position: [8, 6, 11], target: [0, 2, 0], focus: [0, 2, 0] };
+  let min: Vec3 = [...points[0]];
+  let max: Vec3 = [...points[0]];
+  for (const p of points) {
+    min = [Math.min(min[0], p[0]), Math.min(min[1], p[1]), Math.min(min[2], p[2])];
+    max = [Math.max(max[0], p[0]), Math.max(max[1], p[1]), Math.max(max[2], p[2])];
+  }
+  const center: Vec3 = [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2];
+  const radius = Math.max(dist(center, min), dist(center, max), 1.8);
+  const distance = (radius / Math.tan((17 * Math.PI) / 180)) * margin;
+  const position = add(center, scale(norm([0.72, 0.5, 1]), distance));
+  return { position, target: center, focus: center };
+}
+
+function pieceFrame(piece: Piece, moduleId: string | null, margin: number) {
+  const mods = moduleId ? piece.modules.filter((mod) => mod.id === moduleId) : piece.modules;
+  const use = mods.length ? mods : piece.modules;
+  const world: Vec3[] = [];
+  for (const mod of use) {
+    const pts = shapedModule(mod);
+    const step = Math.max(1, Math.floor(pts.length / 48));
+    for (let i = 0; i < pts.length; i += step) {
+      world.push(transformPoint(pts[i].p, mod.position, mod.rotation, mod.scale));
+    }
+  }
+  return framePoints(world, margin);
+}
+
 function placeCamera(camera: THREE.Camera, controls: unknown, position: Vec3, target: Vec3) {
   const ctl = controls as { target?: THREE.Vector3; update?: () => void } | null;
   camera.position.set(position[0], position[1], position[2]);
-  camera.lookAt(target[0], target[1], target[2]);
   if (ctl?.target) ctl.target.set(target[0], target[1], target[2]);
+  camera.lookAt(target[0], target[1], target[2]);
+  ctl?.update?.();
 }
 
 function CameraRig() {
@@ -472,27 +525,40 @@ function CameraRig() {
 
 function desiredPose(world: World, mode: CameraMode): { position: Vec3; target: Vec3; focus: Vec3 } {
   if (world.kind === 'compose') {
-    if (world.piece.id === 'bag') {
-      return { position: [13, 9.5, 16], target: [0, 4, 0], focus: [0, 4, 0] };
-    }
-    const bounds = pieceBounds(world.piece);
-    const pose = overviewPose(bounds.center, Math.max(4.2, bounds.radius * 1.35));
-    return { position: pose.camera, target: pose.target, focus: bounds.center };
+    const wide: { position: Vec3; target: Vec3; focus: Vec3 } =
+      world.piece.modules.some((mod) => mod.form === 'wall')
+        ? { position: [27, 18, 31], target: [0, 5.2, 0], focus: [0, 5.2, 0] }
+        : pieceFrame(world.piece, null, 1.5);
+    const pull = mode === 'hook' ? 0.58 : mode === 'follow' ? 0.76 : 1;
+    return {
+      position: lerpVec(wide.target, wide.position, pull),
+      target: wide.target,
+      focus: wide.focus,
+    };
   }
   const graph = world.graph;
   const lift = world.spin < -0.4 ? 0.22 : -graph.min[1] + 0.02;
-  const overview = overviewPose([graph.center[0], graph.center[1] + lift, graph.center[2]], Math.max(graph.size[0], graph.size[1], 3));
+  const center: Vec3 = [graph.center[0], graph.center[1] + lift, graph.center[2]];
+  const overview = overviewPose(center, Math.max(graph.size[0], graph.size[1] + (world.kind === 'still' ? 1.6 : 0), 3.2));
   if (mode === 'overview' || world.kind !== 'teach') {
+    if (world.kind === 'still' && world.hook) {
+      const hold = stillHold(graph);
+      const target: Vec3 = [center[0] * 0.58 + hold.tip[0] * 0.42, center[1] + 0.2, center[2]];
+      const posed = overviewPose(target, Math.max(graph.size[0] * 0.9, 6.2));
+      return { position: posed.camera, target: posed.target, focus: hold.tip };
+    }
     return { position: overview.camera, target: overview.target, focus: overview.target };
   }
   const step = world.steps[Math.max(0, world.play.current.index)] ?? world.steps[0];
-  const focus: Vec3 = step ? [step.focus[0], step.focus[1] + lift * 0.15, step.focus[2]] : overview.target;
-  if (mode === 'hook' && step) {
-    const eye = hookEyePose(step.hookTip, step.hookDir);
-    return { position: eye.camera, target: eye.target, focus };
+  if (!step) return { position: overview.camera, target: overview.target, focus: overview.target };
+  const mid = lerpVec(step.hookTip, step.focus, mode === 'hook' ? 0.32 : 0.45);
+  const span = dist(step.hookTip, step.focus) + (mode === 'hook' ? 1.8 : 2.2);
+  const posed = overviewPose([mid[0], mid[1] + 0.35, mid[2]], Math.max(mode === 'hook' ? 2.1 : 2.5, span * 0.72));
+  if (mode === 'hook') {
+    const eye = hookEyePose(mid, step.hookDir);
+    return { position: eye.camera, target: mid, focus: mid };
   }
-  const close = overviewPose(focus, 2.6);
-  return { position: close.camera, target: focus, focus };
+  return { position: posed.camera, target: mid, focus: mid };
 }
 
 function Studio() {
@@ -507,10 +573,11 @@ function Studio() {
       <hemisphereLight args={['#fff6ea', '#e6d3ba', 0.62]} />
       <directionalLight
         position={[4.8, 8.2, 3.4]}
-        intensity={quality === 'high' ? 2.55 : 2.1}
-        color="#fff2e2"
+        intensity={quality === 'high' ? 1.7 : 1.45}
+        color="#fff4e6"
         castShadow={quality === 'high'}
-        shadow-mapSize={[1024, 1024]}
+        shadow-mapSize={[2048, 2048]}
+        shadow-radius={10}
         shadow-camera-near={0.4}
         shadow-camera-far={22}
         shadow-camera-left={-8}
@@ -519,9 +586,8 @@ function Studio() {
         shadow-camera-bottom={-8}
         shadow-bias={-0.00035}
       />
-      <directionalLight position={[-4.2, 3.6, 4.2]} intensity={0.7} color="#fff7ee" />
-      <directionalLight position={[-5.2, 3.4, -2]} intensity={0.42} color="#d5e4f6" />
-      <directionalLight position={[-1.2, 4.5, -5]} intensity={0.26} color="#ffe3c8" />
+      <directionalLight position={[-3.5, 4.2, 3.6]} intensity={0.85} color="#fff8ef" />
+      <directionalLight position={[-4.6, 2.8, -2.4]} intensity={0.28} color="#d7e6f6" />
       {quality === 'high' && (
         <Environment resolution={64} frames={1}>
           <Lightformer form="rect" intensity={1.5} color="#fff4e6" position={[0, 4.2, 2.4]} scale={[7, 3, 1]} />
@@ -536,10 +602,10 @@ function Studio() {
         <ringGeometry args={[7.2, 9.4, 64]} />
         <meshStandardMaterial color="#e7d3b8" roughness={1} />
       </mesh>
-      {quality === 'high' && <ContactShadows position={[0, 0, 0]} opacity={0.35} scale={18} blur={2.4} far={4} color="#8a7058" />}
+      {quality === 'high' && <ContactShadows position={[0, 0, 0]} opacity={0.42} scale={22} blur={3.4} far={7} color="#7d654c" resolution={512} />}
       <Craft quality={quality} />
       <CameraRig />
-      <OrbitControls makeDefault target={[0, 3, 0]} enablePan={false} enableDamping dampingFactor={0.08} rotateSpeed={0.62} zoomSpeed={0.7} minDistance={1.4} maxDistance={42} minPolarAngle={0.2} maxPolarAngle={Math.PI * 0.47} />
+      <OrbitControls makeDefault enablePan={false} enableDamping dampingFactor={0.08} rotateSpeed={0.55} zoomSpeed={0.65} minDistance={1.2} maxDistance={48} minPolarAngle={0.15} maxPolarAngle={Math.PI * 0.49} />
     </>
   );
 }

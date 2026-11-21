@@ -7,6 +7,10 @@ import { ComposeScreen, LearnHome, LessonScreen, MakeHome, MineScreen, ProjectSc
 export function Shell() {
   const { route, go, settings, patchSettings, setWorld, piece, cameraMode, setCameraMode } = useApp();
   useEffect(() => {
+    if (route.name === 'lesson') setCameraMode('follow');
+    else if (route.name === 'compose' || route.name === 'make' || route.name === 'project') setCameraMode('overview');
+  }, [route.name, setCameraMode]);
+  useEffect(() => {
     if (route.name === 'learn') {
       setWorld({ kind: 'still', graph: buildChain(8), color: '#c4624a', spin: 0, hook: true });
     } else if (route.name === 'make') {
@@ -20,7 +24,7 @@ export function Shell() {
     route.name === 'lesson' ? '学' : route.name === 'project' ? '做' : route.name === 'make' ? '做' : route.name === 'compose' ? '组' : route.name === 'mine' ? '我的' : '学';
 
   return (
-    <div className="app">
+    <div className={route.name === 'compose' || route.name === 'learn' || route.name === 'lesson' ? 'app hero' : 'app'}>
       <nav className="nav" aria-label="主导航">
         <p className="mark">
           三维

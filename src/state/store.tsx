@@ -169,7 +169,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [save, setSave] = useState<Save>(() => (typeof window === 'undefined' ? fresh() : load()));
   const [route, setRoute] = useState<Route>(() => parseRoute(window.location.hash));
   const [world, setWorld] = useState<World>(still);
-  const [cameraMode, setCameraMode] = useState<CameraMode>('follow');
+  const [cameraMode, setCameraMode] = useState<CameraMode>('overview');
   const [selected, setSelected] = useState<string | null>('front');
 
   useEffect(() => {
@@ -197,7 +197,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const hash = routeHash(next);
       if (window.location.hash !== hash) window.location.hash = hash;
       setRoute(next);
-      setCameraMode('follow');
+      setCameraMode(next.name === 'lesson' ? 'follow' : 'overview');
     };
     return {
       ...save,

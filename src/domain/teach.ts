@@ -207,10 +207,10 @@ export function focusPose(focus: Vec3, radius: number): { target: Vec3; camera: 
 }
 
 export function overviewPose(center: Vec3, size: number): { target: Vec3; camera: Vec3 } {
-  const distance = Math.max(5.2, size * 1.55);
+  const distance = Math.max(5.6, size * 1.7);
   return {
-    target: [center[0], center[1] + size * 0.02, center[2]],
-    camera: add(center, scale(norm([0.55, 0.42, 1]), distance)),
+    target: center,
+    camera: add(center, scale(norm([0.58, 0.52, 1]), distance)),
   };
 }
 
