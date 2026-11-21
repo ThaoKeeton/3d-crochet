@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { patchPresence, setPlayToggle } from '@/ui/presence';
 import {
   BAG_STEPS,
   PROJECTS,
@@ -141,7 +142,7 @@ function stepAtStitch(steps: { stitchIndex: number }[], stitch: number) {
 
 export function LessonScreen({ id }: { id: string }) {
   const lesson = getLesson(id);
-  const { settings, setWorld, makeColors, setMakeColor, markLesson, cameraMode, setCameraMode } = useApp();
+  const { settings, setWorld, makeColors, setMakeColor, markLesson } = useApp();
   const opening = lesson.id === 'chain' ? stepAtStitch(lesson.steps, 2) : 0;
   const play = usePlayback(lesson.steps, settings.speed, settings.reduceMotion, opening);
   const color = makeColors[id] ?? lesson.color;
@@ -154,6 +155,19 @@ export function LessonScreen({ id }: { id: string }) {
   useEffect(() => {
     markRef.current(id, play.index);
   }, [id, play.index]);
+  const playRef = useRef(play);
+  playRef.current = play;
+  useEffect(() => {
+    patchPresence({ playing: play.playing });
+    setPlayToggle(() => {
+      const current = playRef.current;
+      current.setPlaying(!current.playing);
+    });
+    return () => {
+      patchPresence({ playing: false });
+      setPlayToggle(null);
+    };
+  }, [play.playing]);
   if (!step) return null;
   const light = beatLight(step.beat);
   return (
@@ -177,7 +191,6 @@ export function LessonScreen({ id }: { id: string }) {
         onSlow={() => play.setSlow(!play.slow)}
         onRunAll={() => play.setRunAll(!play.runAll)}
       />
-      <ViewSwitch mode={cameraMode} onChange={setCameraMode} />
       <Swatches value={color} onChange={(hex) => setMakeColor(id, hex)} />
       <div className="note">
         <strong>完成后</strong>
@@ -739,22 +752,6 @@ function Player({
           {runAll ? '连续播放中' : '连续播放'}
         </button>
       </div>
-    </div>
-  );
-}
-
-function ViewSwitch({ mode, onChange }: { mode: string; onChange: (mode: 'follow' | 'hook' | 'overview') => void }) {
-  return (
-    <div className="chips" aria-label="视角">
-      <button className={mode === 'follow' ? 'on' : ''} onClick={() => onChange('follow')}>
-        跟着这一针
-      </button>
-      <button className={mode === 'hook' ? 'on' : ''} onClick={() => onChange('hook')}>
-        钩尖
-      </button>
-      <button className={mode === 'overview' ? 'on' : ''} onClick={() => onChange('overview')}>
-        整片
-      </button>
     </div>
   );
 }

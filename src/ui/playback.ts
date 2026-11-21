@@ -32,7 +32,7 @@ export function usePlayback(steps: Playable[], speed: number, reduce: boolean, s
     const tick = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
-      const dur = (slow ? 2.25 : 1.05) / Math.max(0.35, speed);
+      const dur = (slow ? 2.6 : 1.35) / Math.max(0.35, speed);
       if (playRef.current.t < 1) playRef.current.t = reduce ? 1 : Math.min(1, playRef.current.t + dt / dur);
       if (playing && playRef.current.t >= 1) {
         const list = stepsRef.current;

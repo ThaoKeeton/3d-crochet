@@ -217,6 +217,6 @@ export function overviewPose(center: Vec3, size: number): { target: Vec3; camera
 export function hookEyePose(tip: Vec3, dir: Vec3): { target: Vec3; camera: Vec3 } {
   return {
     target: add(tip, scale(dir, 0.15)),
-    camera: add(tip, add(scale(dir, 1.35), [0.15, 0.35, 0.2])),
+    camera: add(tip, add(scale(dir, 2.7), [0.35, 0.7, 0.45])),
   };
 }

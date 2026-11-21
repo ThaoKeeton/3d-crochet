@@ -2,10 +2,12 @@ import { useEffect } from 'react';
 import { buildChain, buildGranny } from '@/domain/motifs';
 import { useApp, type Route } from '@/state/store';
 import { StageCanvas } from '@/three/Stage';
+import { togglePlay, usePresence } from './presence';
 import { ComposeScreen, LearnHome, LessonScreen, MakeHome, MineScreen, ProjectScreen } from './screens';
 
 export function Shell() {
   const { route, go, settings, patchSettings, setWorld, piece, cameraMode, setCameraMode } = useApp();
+  const presence = usePresence();
   useEffect(() => {
     if (route.name === 'lesson') setCameraMode('follow');
     else if (route.name === 'compose' || route.name === 'make' || route.name === 'project') setCameraMode('overview');
@@ -24,7 +26,7 @@ export function Shell() {
     route.name === 'lesson' ? '学' : route.name === 'project' ? '做' : route.name === 'make' ? '做' : route.name === 'compose' ? '组' : route.name === 'mine' ? '我的' : '学';
 
   return (
-    <div className={route.name === 'compose' || route.name === 'learn' || route.name === 'lesson' ? 'app hero' : 'app'}>
+    <div className={`app${presence.orbiting ? ' is-orbiting' : ''}${presence.playing ? ' is-playing' : ''}`}>
       <nav className="nav" aria-label="主导航">
         <p className="mark">
           三维
@@ -55,15 +57,27 @@ export function Shell() {
             </button>
           </div>
         )}
-        {!settings.hintSeen && (
+        {!settings.hintSeen && !presence.orbiting && (
           <button className="hint" onClick={() => patchSettings({ hintSeen: true })}>
             单指转动，双指缩放
           </button>
         )}
+        {presence.playing && (
+          <button className="stage-pause" onClick={() => togglePlay()}>
+            暂停
+          </button>
+        )}
       </div>
-      <main className="sheet">{screenFor(route)}</main>
+      <main className="sheet" key={sheetKey(route)}>
+        {screenFor(route)}
+      </main>
     </div>
   );
+}
+
+function sheetKey(route: Route) {
+  if (route.name === 'lesson' || route.name === 'project') return `${route.name}:${route.id}`;
+  return route.name;
 }
 
 function screenFor(route: Route) {

@@ -1,12 +1,13 @@
 import { ContactShadows, Environment, Lightformer, OrbitControls, PerformanceMonitor } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import * as THREE from 'three';
 import { add, dist, lerp as lerpVec, norm, scale, transformPoint, type Vec3 } from '@/domain/math';
 import { bendPoint, floorPolyline, moduleGraph, seamPolyline, strapArch } from '@/domain/piece';
 import { hookEyePose, overviewPose } from '@/domain/teach';
 import type { Graph, Piece, TeachStep } from '@/domain/types';
 import { useApp } from '@/state/store';
+import { patchPresence } from '@/ui/presence';
 import { createYarnMaterial, hookMetal, hookWood, type YarnUniforms } from './materials';
 import { graphPoints, yarnGeometry, type YarnPoint } from './yarnGeometry';
 
@@ -73,11 +74,16 @@ function YarnMesh({
 }) {
   const geometry = useMemo(() => yarnGeometry(points, radius, radial), [points, radius, radial]);
   const material = useMemo(() => createYarnMaterial(color, uniforms), [color, uniforms]);
+  const goalColor = useRef(new THREE.Color(color));
   useEffect(() => {
-    material.color.set(color);
+    goalColor.current.set(color);
     material.emissive.set(selected ? '#5a2e24' : '#000000');
     material.emissiveIntensity = selected ? 0.18 : 0;
   }, [color, material, selected]);
+  useFrame((_, dt) => {
+    const k = 1 - Math.exp(-Math.min(0.05, dt) * 2.2);
+    material.color.lerp(goalColor.current, k);
+  });
   useEffect(() => {
     return () => {
       geometry.dispose();
@@ -94,9 +100,12 @@ function HookMesh({ pose, scale = 1 }: { pose: { current: { tip: Vec3; dir: Vec3
   const metal = useMemo(() => hookMetal(), []);
   const wood = useMemo(() => hookWood(), []);
   const quaternion = useMemo(() => new THREE.Quaternion(), []);
+  const shown = useMemo(() => new THREE.Quaternion(), []);
+  const place = useMemo(() => new THREE.Vector3(), []);
   const up = useMemo(() => new THREE.Vector3(0, 1, 0), []);
   const aim = useMemo(() => new THREE.Vector3(), []);
   const group = useRef<THREE.Group>(null);
+  const ready = useRef(false);
   useEffect(() => {
     return () => {
       head.dispose();
@@ -105,15 +114,25 @@ function HookMesh({ pose, scale = 1 }: { pose: { current: { tip: Vec3; dir: Vec3
       wood.dispose();
     };
   }, [head, handle, metal, wood]);
-  useFrame(() => {
+  useFrame(({ clock }, dt) => {
     if (!group.current) return;
     const { tip, dir } = pose.current;
     aim.set(dir[0], dir[1], dir[2]);
     if (aim.lengthSq() < 1e-6) aim.set(0, 1, 0);
     else aim.normalize();
     quaternion.setFromUnitVectors(up, aim);
-    group.current.quaternion.copy(quaternion);
-    group.current.position.set(tip[0], tip[1], tip[2]);
+    const breathe = Math.sin(clock.elapsedTime * 1.5) * 0.014;
+    place.set(tip[0], tip[1] + breathe, tip[2]);
+    const k = 1 - Math.exp(-Math.min(0.05, dt) * 9);
+    if (!ready.current) {
+      group.current.position.copy(place);
+      shown.copy(quaternion);
+      ready.current = true;
+    } else {
+      group.current.position.lerp(place, k);
+      shown.slerp(quaternion, k);
+    }
+    group.current.quaternion.copy(shown);
   });
   return (
     <group ref={group} scale={scale}>
@@ -211,11 +230,15 @@ function Craft({ quality }: { quality: 'high' | 'low' }) {
     [],
   );
   const pose = useRef({ tip: [0, 0.4, 0] as Vec3, dir: [0.4, 0.8, 0.3] as Vec3, focus: [0, 0.4, 0] as Vec3, showWrap: false });
+  const handGroup = useRef<THREE.Group>(null);
+  const handNow = useRef(hand);
   const insertRef = useRef<THREE.Mesh>(null);
   const loopRef = useRef<THREE.Mesh>(null);
 
   useFrame(({ clock }) => {
     const pulse = settings.reduceMotion ? 1 : 1 + Math.sin(clock.elapsedTime * 3.2) * 0.08;
+    handNow.current += (hand - handNow.current) * (settings.reduceMotion ? 1 : 0.08);
+    if (handGroup.current) handGroup.current.scale.x = handNow.current;
     if (world.kind !== 'teach') {
       uniforms.uDraw.value = world.kind === 'make' ? world.draw : 1;
       uniforms.uHiA.value = -1;
@@ -238,7 +261,7 @@ function Craft({ quality }: { quality: 'high' | 'low' }) {
     uniforms.uDoneA.value = curr.done?.[0] ?? -1;
     uniforms.uDoneB.value = curr.done?.[1] ?? -1;
     pose.current.tip = lerpVec(prev.hookTip, curr.hookTip, k);
-    pose.current.dir = curr.hookDir;
+    pose.current.dir = lerpVec(prev.hookDir, curr.hookDir, k);
     pose.current.focus = lerpVec(prev.focus, curr.focus, k);
     pose.current.showWrap = curr.showWrap;
     const showInsert = (curr.beat === 'insert' || curr.beat === 'insert2') && k > 0.35 && curr.insertion;
@@ -248,10 +271,11 @@ function Craft({ quality }: { quality: 'high' | 'low' }) {
       if (curr.insertion) insertRef.current.position.set(curr.insertion[0], curr.insertion[1], curr.insertion[2]);
     }
     const showLoop = curr.beat !== 'travel';
+    const loopAt = lerpVec(prev.loop, curr.loop, k);
     if (loopRef.current) {
       loopRef.current.visible = showLoop;
       loopRef.current.scale.setScalar(showLoop ? pulse : 0.001);
-      loopRef.current.position.set(curr.loop[0], curr.loop[1], curr.loop[2]);
+      loopRef.current.position.set(loopAt[0], loopAt[1], loopAt[2]);
     }
   });
 
@@ -260,7 +284,7 @@ function Craft({ quality }: { quality: 'high' | 'low' }) {
       {world.kind === 'compose' ? (
         <ComposeBody piece={world.piece} selected={world.selected} radial={radial} radius={radius} onSelect={setSelected} onMove={moveModule} />
       ) : (
-        <group scale={[hand, 1, 1]}>
+        <group ref={handGroup}>
           <SingleBody world={world} radial={radial} radius={radius} uniforms={uniforms} />
           {world.kind === 'teach' && (
             <>
@@ -295,8 +319,16 @@ function SingleBody({
 }) {
   const points = useMemo(() => graphPoints(world.graph.samples), [world.graph]);
   const lift = world.spin < -0.4 ? 0.22 : -world.graph.min[1] + 0.02;
+  const sway = useRef<THREE.Group>(null);
+  useFrame(({ clock }) => {
+    if (!sway.current) return;
+    const t = clock.elapsedTime;
+    if (world.kind === 'still') sway.current.rotation.y = Math.sin(t * 0.38) * 0.2;
+    else if (world.kind === 'teach') sway.current.rotation.z = Math.sin(t * 0.7) * 0.008;
+    else sway.current.rotation.z = Math.sin(t * 0.5) * 0.004;
+  });
   return (
-    <group position={[0, lift, 0]} rotation={[world.spin, 0, 0]}>
+    <group ref={sway} position={[0, lift, 0]} rotation={[world.spin, 0, 0]}>
       <YarnMesh points={points} color={world.color} radius={radius} radial={radial} uniforms={uniforms} />
       {world.kind === 'still' && world.hook && <StillHook graph={world.graph} />}
     </group>
@@ -341,7 +373,11 @@ function ComposeBody({
       ))}
       {piece.seams.map((seam) => {
         const points = seamPolyline(piece, seam).map((p, index, all) => ({ p, along: index / Math.max(1, all.length - 1) }));
-        return <YarnMesh key={seam.id} points={points} color={issues.has(seam.id) ? '#a33b32' : '#d7b48a'} radius={radius * 0.72} radial={Math.max(5, radial - 2)} />;
+        return (
+          <Appear key={seam.id}>
+            <YarnMesh points={points} color={issues.has(seam.id) ? '#a33b32' : '#d7b48a'} radius={radius * 0.72} radial={Math.max(5, radial - 2)} />
+          </Appear>
+        );
       })}
       {piece.gather && (
         <YarnMesh
@@ -378,7 +414,7 @@ function ModuleView({
   const quaternion = useMemo(() => new THREE.Quaternion(mod.rotation[0], mod.rotation[1], mod.rotation[2], mod.rotation[3]), [mod.rotation]);
   const size = Math.max(graph.size[0], graph.size[1], graph.size[2], 1.2);
   return (
-    <group position={mod.position} quaternion={quaternion} scale={mod.scale}>
+    <SoftPlace position={mod.position} rotation={quaternion} scale={mod.scale}>
       <YarnMesh points={points} color={mod.color} radius={mod.kind === 'granny' ? radius * 1.05 : radius} radial={radial} selected={selected} />
       <mesh
         visible={false}
@@ -399,8 +435,52 @@ function ModuleView({
       >
         <boxGeometry args={[size, Math.max(size, 0.8), Math.max(graph.size[2], 0.8)]} />
       </mesh>
-    </group>
+    </SoftPlace>
   );
+}
+
+function SoftPlace({
+  position,
+  rotation,
+  scale: targetScale,
+  children,
+}: {
+  position: Vec3;
+  rotation: THREE.Quaternion;
+  scale: number;
+  children: ReactNode;
+}) {
+  const ref = useRef<THREE.Group>(null);
+  const pos = useRef(new THREE.Vector3(position[0], position[1] + 0.65, position[2]));
+  const goal = useRef(new THREE.Vector3());
+  const shown = useRef(rotation.clone());
+  const scl = useRef(targetScale * 0.96);
+  useFrame((_, dt) => {
+    const group = ref.current;
+    if (!group) return;
+    const k = 1 - Math.exp(-Math.min(0.05, dt) * 5.2);
+    goal.current.set(position[0], position[1], position[2]);
+    pos.current.lerp(goal.current, k);
+    shown.current.slerp(rotation, k);
+    scl.current += (targetScale - scl.current) * k;
+    group.position.copy(pos.current);
+    group.quaternion.copy(shown.current);
+    group.scale.setScalar(scl.current);
+  });
+  return <group ref={ref}>{children}</group>;
+}
+
+function Appear({ children }: { children: ReactNode }) {
+  const ref = useRef<THREE.Group>(null);
+  const scl = useRef(0.15);
+  useFrame((_, dt) => {
+    const group = ref.current;
+    if (!group) return;
+    const k = 1 - Math.exp(-Math.min(0.05, dt) * 4.5);
+    scl.current += (1 - scl.current) * k;
+    group.scale.setScalar(scl.current);
+  });
+  return <group ref={ref}>{children}</group>;
 }
 
 function onSphere(radius: number, lat: number, lon: number): Vec3 {
@@ -518,53 +598,57 @@ function pieceFrame(piece: Piece, moduleId: string | null, margin: number) {
   return framePoints(world, margin);
 }
 
-function placeCamera(camera: THREE.Camera, controls: unknown, position: Vec3, target: Vec3) {
-  const ctl = controls as { target?: THREE.Vector3; update?: () => void } | null;
-  camera.position.set(position[0], position[1], position[2]);
-  if (ctl?.target) ctl.target.set(target[0], target[1], target[2]);
-  camera.lookAt(target[0], target[1], target[2]);
-  ctl?.update?.();
-}
-
 function CameraRig() {
   const { world, cameraMode, settings } = useApp();
-  const { camera, controls } = useThree();
-  const key = useRef('');
-  const stepKey = useRef(-1);
+  const { camera, controls, size } = useThree();
+  const goalPos = useRef(new THREE.Vector3(14, 9, 18));
+  const goalTgt = useRef(new THREE.Vector3(0, 2.2, 0));
+  const signature = useRef('');
+  const userOwned = useRef(false);
   const dragging = useRef(false);
   useEffect(() => {
     const ctl = controls as { addEventListener?: (type: string, cb: () => void) => void; removeEventListener?: (type: string, cb: () => void) => void } | null;
     if (!ctl?.addEventListener) return;
     const start = () => {
       dragging.current = true;
+      userOwned.current = true;
+      patchPresence({ orbiting: true });
     };
     const end = () => {
       dragging.current = false;
+      patchPresence({ orbiting: false });
     };
     ctl.addEventListener('start', start);
     ctl.addEventListener('end', end);
     return () => {
       ctl.removeEventListener?.('start', start);
       ctl.removeEventListener?.('end', end);
+      patchPresence({ orbiting: false });
     };
   }, [controls]);
 
-  useEffect(() => {
-    if (dragging.current) return;
+  useFrame((_, dt) => {
+    const step = world.kind === 'teach' ? world.play.current.index : -1;
+    const id = `${world.kind}:${cameraMode}:${step}:${settings.hand}`;
+    if (signature.current !== id) {
+      signature.current = id;
+      userOwned.current = false;
+    }
     const pose = desiredPose(world, cameraMode);
-    const id = `${world.kind}:${cameraMode}:${pose.position.join()}:${pose.target.join()}`;
-    if (key.current === id) return;
-    key.current = id;
-    placeCamera(camera, controls, pose.position, pose.target);
-    stepKey.current = world.kind === 'teach' ? world.play.current.index : -1;
-  }, [world, cameraMode, camera, controls, settings.reduceMotion]);
-  useFrame(() => {
-    if (world.kind !== 'teach' || dragging.current) return;
-    const index = world.play.current.index;
-    if (stepKey.current === index) return;
-    stepKey.current = index;
-    const pose = desiredPose(world, cameraMode);
-    placeCamera(camera, controls, pose.position, pose.target);
+    const wide = size.width >= 980;
+    const nudge = wide ? Math.min(3.2, size.width * 0.0016) : 0;
+    goalPos.current.set(pose.position[0] + nudge, pose.position[1], pose.position[2]);
+    goalTgt.current.set(pose.target[0] + nudge, pose.target[1] - (wide ? 0 : 0.8), pose.target[2]);
+    if (dragging.current || userOwned.current) return;
+    const ctl = controls as { target?: THREE.Vector3; update?: () => void } | null;
+    const gap = camera.position.distanceTo(goalPos.current);
+    const rate = gap > 6 ? 8 : 3.4;
+    let k = settings.reduceMotion ? 1 : 1 - Math.exp(-Math.min(0.05, dt) * rate);
+    if (!settings.reduceMotion && gap > 12) k = Math.max(k, 0.62);
+    camera.position.lerp(goalPos.current, k);
+    if (ctl?.target) ctl.target.lerp(goalTgt.current, k);
+    camera.lookAt(ctl?.target ?? goalTgt.current);
+    ctl?.update?.();
   });
   return null;
 }
@@ -601,8 +685,8 @@ function desiredPose(world: World, mode: CameraMode): { position: Vec3; target: 
   const chainStrip = step.kind === 'ch' && graph.size[0] > graph.size[1] * 1.6;
   const formed: Vec3 = [step.focus[0] - 1.45, step.focus[1], step.focus[2]];
   const anchor = chainStrip ? lerpVec(mid, formed, step.stitchIndex <= 4 ? 0.46 : 0.18) : mid;
-  const span = dist(step.hookTip, step.focus) + (chainStrip && step.stitchIndex <= 4 ? 3.3 : mode === 'hook' ? 1.8 : 2.2);
-  const posed = overviewPose([anchor[0], anchor[1] + 0.35, anchor[2]], Math.max(mode === 'hook' ? 2.1 : 2.6, span * 0.72));
+  const span = dist(step.hookTip, step.focus) + (chainStrip && step.stitchIndex <= 4 ? 3.6 : mode === 'hook' ? 2.4 : 2.6);
+  const posed = overviewPose([anchor[0], anchor[1] + 0.4, anchor[2]], Math.max(mode === 'hook' ? 2.8 : 3.1, span * 0.82));
   if (mode === 'hook') {
     const eye = hookEyePose(mid, step.hookDir);
     return { position: eye.camera, target: mid, focus: mid };
@@ -612,8 +696,16 @@ function desiredPose(world: World, mode: CameraMode): { position: Vec3; target: 
 
 function Studio() {
   const [quality, setQuality] = useState<'high' | 'low'>('high');
+  const { settings } = useApp();
   const map = useMemo(() => linenTexture(), []);
+  const keyLight = useRef<THREE.DirectionalLight>(null);
   useEffect(() => () => map?.dispose(), [map]);
+  useFrame(({ clock }) => {
+    const light = keyLight.current;
+    if (!light || settings.reduceMotion) return;
+    const base = quality === 'high' ? 1.7 : 1.45;
+    light.intensity = base + Math.sin(clock.elapsedTime * 0.7) * 0.07;
+  });
   return (
     <>
       <PerformanceMonitor flipflops={2} onDecline={() => setQuality('low')} onIncline={() => setQuality('high')} />
@@ -621,6 +713,9 @@ function Studio() {
       <fog attach="fog" args={['#e7dccb', 48, 120]} />
       <hemisphereLight args={['#fff6ea', '#e6d3ba', 0.62]} />
       <directionalLight
+        ref={(light) => {
+          keyLight.current = light;
+        }}
         position={[4.8, 8.2, 3.4]}
         intensity={quality === 'high' ? 1.7 : 1.45}
         color="#fff4e6"
@@ -654,7 +749,7 @@ function Studio() {
       {quality === 'high' && <ContactShadows position={[0, 0, 0]} opacity={0.42} scale={22} blur={3.4} far={7} color="#7d654c" resolution={512} />}
       <Craft quality={quality} />
       <CameraRig />
-      <OrbitControls makeDefault enablePan={false} enableDamping dampingFactor={0.08} rotateSpeed={0.55} zoomSpeed={0.65} minDistance={1.2} maxDistance={48} minPolarAngle={0.15} maxPolarAngle={Math.PI * 0.49} />
+      <OrbitControls makeDefault enablePan={false} enableDamping dampingFactor={0.14} rotateSpeed={0.62} zoomSpeed={0.7} minDistance={1.2} maxDistance={48} minPolarAngle={0.15} maxPolarAngle={Math.PI * 0.49} />
     </>
   );
 }
@@ -664,10 +759,10 @@ export function StageCanvas() {
     <Canvas
       shadows
       dpr={[1, 1.6]}
-      camera={{ fov: 32, position: [4.2, 3.4, 6.4], near: 0.05, far: 80 }}
+      camera={{ fov: 32, position: [14, 9, 18], near: 0.05, far: 80 }}
       gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
       onCreated={({ gl, camera }) => {
-        camera.lookAt(0, 1.2, 0);
+        camera.lookAt(0, 2.2, 0);
         gl.setClearColor('#e7dccb');
         gl.toneMapping = THREE.ACESFilmicToneMapping;
         gl.toneMappingExposure = 0.96;
