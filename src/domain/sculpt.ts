@@ -81,7 +81,7 @@ function buildSubject(subject: Subject, prompt: string): TriangleMesh[] {
   const charm = /挂件|挂环|吊坠/.test(prompt);
   const hat = prompt.includes('帽');
   const scarf = prompt.includes('围巾');
-  const flame = prompt.includes('火');
+  const flame = /火焰|火苗/.test(prompt);
   const planetBit = prompt.includes('星球') || prompt.includes('行星');
   if (subject === 'bag') return bagParts(prompt.includes('耳') || prompt.includes('兔'), charm);
   if (subject === 'rabbit') return animalParts('rabbit', charm, hat, scarf, flame, planetBit && subject !== 'rabbit');
@@ -93,26 +93,26 @@ function buildSubject(subject: Subject, prompt: string): TriangleMesh[] {
 function animalParts(kind: 'bear' | 'rabbit' | 'cat', charm: boolean, hat: boolean, scarf: boolean, flame: boolean, moon: boolean): TriangleMesh[] {
   const sphere = uvSphere(10, 14);
   const parts: TriangleMesh[] = [
-    toMesh('body', '身体', 'body', place(sphere, [1.05, 0.95, 0.95], [0, 1.05, 0])),
-    toMesh('head', '头', 'head', place(sphere, [0.72, 0.68, 0.7], [0, 2.15, 0.05])),
+    toMesh('body', '身体', 'body', place(sphere, [1.12, 1.02, 1.02], [0, 0.98, 0])),
+    toMesh('head', '头', 'head', place(sphere, [0.78, 0.74, 0.76], [0, 1.98, 0.06])),
   ];
   if (kind === 'rabbit') {
-    parts.push(ear('ear-l', '左耳', [-0.28, 2.85, 0], 0.22, 0.72));
-    parts.push(ear('ear-r', '右耳', [0.28, 2.85, 0], 0.22, 0.72));
+    parts.push(ear('ear-l', '左耳', [-0.26, 2.72, -0.02], 0.16, 0.55));
+    parts.push(ear('ear-r', '右耳', [0.26, 2.72, -0.02], 0.16, 0.55));
   } else if (kind === 'cat') {
-    parts.push(ear('ear-l', '左耳', [-0.38, 2.62, 0], 0.2, 0.34));
-    parts.push(ear('ear-r', '右耳', [0.38, 2.62, 0], 0.2, 0.34));
-    parts.push(toMesh('tail', '尾巴', 'tail', place(sphere, [0.16, 0.16, 0.55], [0.7, 1.05, -0.15])));
+    parts.push(ear('ear-l', '左耳', [-0.32, 2.58, -0.04], 0.16, 0.26));
+    parts.push(ear('ear-r', '右耳', [0.32, 2.58, -0.04], 0.16, 0.26));
+    parts.push(toMesh('tail', '尾巴', 'tail', place(sphere, [0.14, 0.14, 0.42], [0.62, 0.95, -0.2])));
   } else {
-    parts.push(ear('ear-l', '左耳', [-0.42, 2.68, 0], 0.28, 0.28));
-    parts.push(ear('ear-r', '右耳', [0.42, 2.68, 0], 0.28, 0.28));
+    parts.push(ear('ear-l', '左耳', [-0.34, 2.78, 0], 0.22, 0.2));
+    parts.push(ear('ear-r', '右耳', [0.34, 2.78, 0], 0.22, 0.2));
   }
-  parts.push(toMesh('snout', '鼻子', 'snout', place(sphere, [0.22, 0.16, 0.18], [0, 2.02, 0.62])));
-  if (hat) parts.push(toMesh('hat', '帽子', 'hat', place(uvCone(1, 0.7, 16), [0.7, 0.55, 0.7], [0, 2.55, 0])));
+  parts.push(toMesh('snout', '鼻子', 'snout', place(sphere, [0.16, 0.13, 0.14], [0, 1.86, 0.58])));
+  if (hat) parts.push(toMesh('hat', '帽子', 'hat', place(uvCone(1, 0.7, 16), [0.62, 0.42, 0.62], [0, 2.48, 0])));
   if (scarf) parts.push(scarfMesh());
-  if (flame) parts.push(toMesh('flame', '火焰', 'flame', place(uvCone(1, 0.45, 12), [0.35, 0.7, 0.35], [0.85, 1.7, 0.2])));
-  if (moon) parts.push(toMesh('moon', '星球', 'planet', place(sphere, [0.28, 0.28, 0.28], [1.15, 2.4, 0.2])));
-  if (charm) parts.push(toMesh('loop', '挂环', 'loop', place(uvTorus(0.28, 0.07, 16, 8), [1, 1, 1], [0, 3.15, 0])));
+  if (flame) parts.push(toMesh('flame', '火焰', 'flame', place(uvCone(1, 0.45, 12), [0.28, 0.5, 0.28], [0.78, 1.55, 0.15])));
+  if (moon) parts.push(toMesh('moon', '星球', 'planet', place(sphere, [0.22, 0.22, 0.22], [0.95, 2.15, 0.1])));
+  if (charm) parts.push(toMesh('loop', '挂环', 'loop', place(uvTorus(0.18, 0.045, 18, 8), [1, 1, 1], [0, 2.82, 0])));
   return parts;
 }
 
@@ -146,10 +146,10 @@ function bagParts(ears: boolean, charm: boolean): TriangleMesh[] {
     toMesh('strap', '包带', 'strap', place(uvTorus(0.85, 0.08, 20, 8), [1, 0.72, 1], [0, 2.15, 0])),
   ];
   if (ears) {
-    parts.push(ear('ear-l', '左耳', [-0.45, 1.85, 0.15], 0.18, 0.48));
-    parts.push(ear('ear-r', '右耳', [0.45, 1.85, 0.15], 0.18, 0.48));
+    parts.push(ear('ear-l', '左耳', [-0.38, 1.72, 0.02], 0.16, 0.42));
+    parts.push(ear('ear-r', '右耳', [0.38, 1.72, 0.02], 0.16, 0.42));
   }
-  if (charm) parts.push(toMesh('loop', '挂环', 'loop', place(uvTorus(0.22, 0.06, 14, 8), [1, 1, 1], [0, 2.7, 0])));
+  if (charm) parts.push(toMesh('loop', '挂环', 'loop', place(uvTorus(0.16, 0.04, 14, 8), [1, 1, 1], [0, 2.15, 0])));
   return parts;
 }
 

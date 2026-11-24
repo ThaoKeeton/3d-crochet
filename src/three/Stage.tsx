@@ -33,10 +33,10 @@ function linenTexture() {
   canvas.height = 512;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
-  ctx.fillStyle = '#eadcc8';
+  ctx.fillStyle = '#f7f2ec';
   ctx.fillRect(0, 0, 512, 512);
   for (let i = 0; i < 512; i += 2) {
-    ctx.strokeStyle = i % 4 === 0 ? 'rgba(120, 86, 54, 0.08)' : 'rgba(255, 248, 236, 0.16)';
+    ctx.strokeStyle = i % 4 === 0 ? 'rgba(180, 140, 120, 0.06)' : 'rgba(255, 255, 255, 0.35)';
     ctx.beginPath();
     ctx.moveTo(i, 0);
     ctx.lineTo(i + Math.sin(i) * 0.6, 512);
@@ -47,7 +47,7 @@ function linenTexture() {
     ctx.stroke();
   }
   for (let i = 0; i < 1800; i++) {
-    ctx.fillStyle = `rgba(90, 60, 40, ${Math.random() * 0.05})`;
+    ctx.fillStyle = `rgba(160, 120, 100, ${Math.random() * 0.035})`;
     ctx.fillRect(Math.random() * 512, Math.random() * 512, 1.5, 1);
   }
   const texture = new THREE.CanvasTexture(canvas);
@@ -771,22 +771,22 @@ function Studio() {
   useFrame(({ clock }) => {
     const light = keyLight.current;
     if (!light || settings.reduceMotion) return;
-    const base = quality === 'high' ? 1.7 : 1.45;
+    const base = quality === 'high' ? 1.9 : 1.6;
     light.intensity = base + Math.sin(clock.elapsedTime * 0.7) * 0.07;
   });
   return (
     <>
       <PerformanceMonitor flipflops={2} onDecline={() => setQuality('low')} onIncline={() => setQuality('high')} />
-      <color attach="background" args={['#e7dccb']} />
-      <fog attach="fog" args={['#e7dccb', 48, 120]} />
-      <hemisphereLight args={['#fff6ea', '#e6d3ba', 0.62]} />
+      <color attach="background" args={['#f6f1eb']} />
+      <fog attach="fog" args={['#f6f1eb', 56, 140]} />
+      <hemisphereLight args={['#fffaf6', '#f0e4da', 0.78]} />
       <directionalLight
         ref={(light) => {
           keyLight.current = light;
         }}
         position={[4.8, 8.2, 3.4]}
-        intensity={quality === 'high' ? 1.7 : 1.45}
-        color="#fff4e6"
+        intensity={quality === 'high' ? 1.9 : 1.6}
+        color="#fffaf6"
         castShadow={quality === 'high'}
         shadow-mapSize={[2048, 2048]}
         shadow-radius={10}
@@ -798,23 +798,23 @@ function Studio() {
         shadow-camera-bottom={-8}
         shadow-bias={-0.00035}
       />
-      <directionalLight position={[-3.5, 4.2, 3.6]} intensity={0.85} color="#fff8ef" />
+      <directionalLight position={[-3.5, 4.2, 3.6]} intensity={1.05} color="#fffaf6" />
       <directionalLight position={[-4.6, 2.8, -2.4]} intensity={0.28} color="#d7e6f6" />
       {quality === 'high' && (
         <Environment resolution={64} frames={1}>
-          <Lightformer form="rect" intensity={1.5} color="#fff4e6" position={[0, 4.2, 2.4]} scale={[7, 3, 1]} />
+          <Lightformer form="rect" intensity={1.8} color="#fff7f2" position={[0, 4.2, 2.4]} scale={[7, 3, 1]} />
           <Lightformer form="rect" intensity={0.45} color="#d5e6f6" position={[-4, 2, -2]} scale={[3, 3, 1]} />
         </Environment>
       )}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.03, 0]} receiveShadow>
         <circleGeometry args={[24, 72]} />
-        <meshStandardMaterial color="#e4d0b6" map={map} roughness={0.94} metalness={0} />
+        <meshStandardMaterial color="#f7f3ee" map={map} roughness={0.9} metalness={0} />
       </mesh>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]}>
         <ringGeometry args={[7.2, 9.4, 64]} />
-        <meshStandardMaterial color="#e7d3b8" roughness={1} />
+        <meshStandardMaterial color="#f3ebe4" roughness={1} />
       </mesh>
-      {quality === 'high' && <ContactShadows position={[0, 0, 0]} opacity={0.42} scale={22} blur={3.4} far={7} color="#7d654c" resolution={512} />}
+      {quality === 'high' && <ContactShadows position={[0, 0, 0]} opacity={0.28} scale={22} blur={3.8} far={7} color="#c4a090" resolution={512} />}
       <Craft quality={quality} />
       <CameraRig />
       <OrbitControls makeDefault enablePan={false} enableDamping dampingFactor={0.14} rotateSpeed={0.62} zoomSpeed={0.7} minDistance={1.2} maxDistance={48} minPolarAngle={0.15} maxPolarAngle={Math.PI * 0.49} />
@@ -831,9 +831,9 @@ export function StageCanvas() {
       gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
       onCreated={({ gl, camera }) => {
         camera.lookAt(0, 2.2, 0);
-        gl.setClearColor('#e7dccb');
+        gl.setClearColor('#f6f1eb');
         gl.toneMapping = THREE.ACESFilmicToneMapping;
-        gl.toneMappingExposure = 0.96;
+        gl.toneMappingExposure = 1.05;
       }}
     >
       <Studio />

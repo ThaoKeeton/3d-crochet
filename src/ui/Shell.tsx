@@ -7,7 +7,7 @@ import { ModelStudio } from './modelStudio';
 import { ComposeScreen, LearnHome, LessonScreen, MakeHome, MineScreen, ProjectScreen } from './screens';
 
 export function Shell() {
-  const { route, go, settings, patchSettings, setWorld, piece, cameraMode, setCameraMode } = useApp();
+  const { route, go, setWorld, piece, cameraMode, setCameraMode } = useApp();
   const presence = usePresence();
   useEffect(() => {
     if (route.name === 'lesson') setCameraMode('follow');
@@ -25,15 +25,17 @@ export function Shell() {
 
   const title =
     route.name === 'lesson' ? '学' : route.name === 'project' ? '做' : route.name === 'make' ? '做' : route.name === 'compose' || route.name === 'sculpt' ? '组' : route.name === 'mine' ? '我的' : '学';
+  const teaching = route.name === 'lesson';
 
   return (
-    <div className={`app${presence.orbiting ? ' is-orbiting' : ''}${presence.playing ? ' is-playing' : ''}`}>
+    <div className={`app${presence.playing ? ' is-playing' : ''}`}>
+      <header className="topbar">
+        <strong>三维钩织</strong>
+        <span className="crumb">{title}</span>
+        {teaching && <ViewPills mode={cameraMode} onChange={setCameraMode} />}
+      </header>
       <nav className="nav" aria-label="主导航">
-        <p className="mark">
-          三维
-          <br />
-          钩织
-        </p>
+        <p className="mark">三维钩织</p>
         <NavButton id="learn" label="学" active={route.name === 'learn' || route.name === 'lesson'} onClick={() => go({ name: 'learn' })} />
         <NavButton id="make" label="做" active={route.name === 'make' || route.name === 'project'} onClick={() => go({ name: 'make' })} />
         <NavButton id="compose" label="组" active={route.name === 'compose' || route.name === 'sculpt'} onClick={() => go({ name: 'compose' })} />
@@ -41,28 +43,7 @@ export function Shell() {
       </nav>
       <div className="stage">
         <StageCanvas />
-        <div className="stage-top">
-          <strong>三维钩织</strong>
-          <span>{title}</span>
-        </div>
-        {(route.name === 'lesson' || route.name === 'project' || route.name === 'compose' || route.name === 'sculpt') && (
-          <div className="stage-views">
-            <button className={cameraMode === 'follow' ? 'on' : ''} onClick={() => setCameraMode('follow')}>
-              跟着
-            </button>
-            <button className={cameraMode === 'hook' ? 'on' : ''} onClick={() => setCameraMode('hook')}>
-              钩尖
-            </button>
-            <button className={cameraMode === 'overview' ? 'on' : ''} onClick={() => setCameraMode('overview')}>
-              整片
-            </button>
-          </div>
-        )}
-        {!settings.hintSeen && !presence.orbiting && (
-          <button className="hint" onClick={() => patchSettings({ hintSeen: true })}>
-            单指转动，双指缩放
-          </button>
-        )}
+        {teaching && <ViewPills mode={cameraMode} onChange={setCameraMode} floating />}
         {presence.playing && (
           <button className="stage-pause" onClick={() => togglePlay()}>
             暂停
@@ -72,6 +53,22 @@ export function Shell() {
       <main className="sheet" key={sheetKey(route)}>
         {screenFor(route)}
       </main>
+    </div>
+  );
+}
+
+function ViewPills({ mode, onChange, floating = false }: { mode: string; onChange: (mode: 'follow' | 'hook' | 'overview') => void; floating?: boolean }) {
+  return (
+    <div className={floating ? 'stage-views float' : 'stage-views'}>
+      <button className={mode === 'follow' ? 'on' : ''} onClick={() => onChange('follow')}>
+        跟着
+      </button>
+      <button className={mode === 'hook' ? 'on' : ''} onClick={() => onChange('hook')}>
+        钩尖
+      </button>
+      <button className={mode === 'overview' ? 'on' : ''} onClick={() => onChange('overview')}>
+        整片
+      </button>
     </div>
   );
 }

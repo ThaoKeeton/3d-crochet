@@ -22,6 +22,8 @@ export function ModelStudio() {
   const [view, setView] = useState<'mesh' | 'yarn'>('mesh');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
+  const [pane, setPane] = useState<'tune' | 'pattern'>('tune');
+  const [tool, setTool] = useState<'color' | 'parts' | 'size' | 'source' | 'pattern'>('color');
 
   const plan = useMemo(() => (model && view === 'yarn' ? crochetize(model.parts, colors, sizeCm, yarnMm) : null), [model, colors, sizeCm, yarnMm, view]);
 
@@ -100,28 +102,54 @@ export function ModelStudio() {
     if (!model) return;
     setPaletteIndex(index);
     setColors(colorsOf(model.palettes[index]));
-    setView('mesh');
   };
 
   const current = model?.parts.find((part) => part.id === selected) ?? null;
 
+  const copyPattern = () => {
+    if (!plan) return;
+    void navigator.clipboard.writeText(plan.pattern);
+    setNotice('图解已复制。');
+  };
+
   return (
-    <div className="stack">
-      <p className="kicker">从三维模型</p>
-      <h1>{model ? model.name : '先有一个模型。'}</h1>
-      {!model && (
-        <>
-          <p className="lead">写下想钩的东西，或导入 STL、OBJ、GLB。确认颜色和尺寸之后，再转成能钩的成品。</p>
+    <div className={`work pane-${pane}`}>
+      <header className="work-head">
+        <p className="kicker">从三维模型</p>
+        <h1>{model ? model.name : '先做一个模型'}</h1>
+        {model && (
+          <div className="chips">
+            <button className={view === 'mesh' ? 'on' : ''} onClick={() => setView('mesh')}>
+              原三维模型
+            </button>
+            <button className={view === 'yarn' ? 'on' : ''} onClick={() => setView('yarn')}>
+              钩织成品
+            </button>
+            {view === 'yarn' && (
+              <span className="desk-tabs">
+                <button className={pane === 'tune' ? 'on' : ''} onClick={() => setPane('tune')}>
+                  调整
+                </button>
+                <button className={pane === 'pattern' ? 'on' : ''} onClick={() => setPane('pattern')}>
+                  图解
+                </button>
+              </span>
+            )}
+          </div>
+        )}
+      </header>
+      <div className="work-body">
+        <section className={`tune-block${tool === 'source' || !model ? ' on' : ''}`}>
           <form
-            className="form"
+            className="prompt-row"
             onSubmit={(event) => {
               event.preventDefault();
               void generate(prompt);
             }}
           >
-            <input value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="例如：薄荷绿和奶白兔耳包" />
-            <button className="primary" type="submit" disabled={busy}>
-              {busy ? '正在成形…' : '生成三维模型'}
+            <input value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="描述想钩的东西" />
+            <button type="submit" disabled={busy}>
+              {busy ? '…' : '生成'}
             </button>
           </form>
           <div className="chips">
@@ -135,7 +163,7 @@ export function ModelStudio() {
             导入 STL / OBJ / GLB
             <input
               type="file"
-              accept=".stl,.obj,.glb,.gltf,model/stl,model/obj"
+              accept=".stl,.obj,.glb,.gltf"
               onChange={(event) => {
                 const file = event.target.files?.[0];
                 if (file) void onFile(file);
@@ -143,100 +171,105 @@ export function ModelStudio() {
               }}
             />
           </label>
-        </>
-      )}
-      {model && (
-        <>
-          <p className="lead">{view === 'mesh' ? '这还是三维模型。改好颜色和尺寸，再决定要不要钩。' : '这是按圈织短针转出来的纱线。图解可以照着钩。'}</p>
-          {view === 'yarn' && (
-            <div className="chips">
-              <button className={view === 'yarn' ? 'on' : ''} onClick={() => setView('yarn')}>
-                钩织成品
-              </button>
-              <button onClick={() => setView('mesh')}>原三维模型</button>
-            </div>
-          )}
-          <div className="chips">
-            {model.palettes.map((palette, index) => (
-              <button key={palette.id} className={index === paletteIndex ? 'on' : ''} onClick={() => choosePalette(index)}>
-                {palette.name}
-              </button>
-            ))}
-          </div>
-          {model.palettes[paletteIndex] && <p className="nudge">{model.palettes[paletteIndex].note}</p>}
-          <div className="list">
-            {model.parts.map((part) => (
-              <button key={part.id} className={`row ${part.id === selected ? 'on' : ''}`} onClick={() => setSelected(part.id)}>
-                <span>
-                  <b>{part.name}</b>
-                  <small>点模型或这里改这一块的颜色</small>
-                </span>
-                <i style={{ background: colors[part.id] }} />
-              </button>
-            ))}
-          </div>
-          {current && view === 'mesh' && (
-            <div className="swatches" aria-label="部件颜色">
-              {YARNS.map((yarn) => (
-                <button
-                  type="button"
-                  key={yarn.id}
-                  className={colors[current.id]?.toLowerCase() === yarn.hex.toLowerCase() ? 'on' : ''}
-                  style={{ background: yarn.hex }}
-                  aria-label={yarn.name}
-                  onClick={() => setColors((prev) => ({ ...prev, [current.id]: yarn.hex }))}
-                />
-              ))}
-            </div>
-          )}
-          <label className="nudge">
-            成品高度 {sizeCm} cm
-            <input type="range" min={6} max={24} value={sizeCm} onChange={(event) => { setSizeCm(Number(event.target.value)); setView('mesh'); }} />
-          </label>
-          <div className="chips">
-            {[3, 4, 5].map((mm) => (
-              <button key={mm} className={yarnMm === mm ? 'on' : ''} onClick={() => { setYarnMm(mm); setView('mesh'); }}>
-                {mm} mm 线
-              </button>
-            ))}
-          </div>
-          <div className="row-actions">
-            {view === 'mesh' ? (
-              <button className="primary" onClick={() => setView('yarn')}>
-                转为钩织
-              </button>
-            ) : (
-              <button className="primary" onClick={() => follow(model, plan, go)}>
-                跟着钩
-              </button>
-            )}
-            <button onClick={() => downloadStl(model, sizeCm)}>导出 STL</button>
-            <button onClick={() => { setModel(null); setNotice(''); }}>换一个模型</button>
-          </div>
-          {plan && (
-            <>
-              <p className="ok">线长约 {Math.round(plan.lengthCm)} cm · {estimateYarn(plan.lengthCm, yarnMm >= 5 ? 'worsted' : 'sport').meters.toFixed(0)} 米</p>
-              <div className="note">
-                <strong>图解</strong>
-                <pre>{plan.pattern}</pre>
-                <button
-                  className="texty"
-                  onClick={() => {
-                    void navigator.clipboard.writeText(plan.pattern);
-                    setNotice('图解已复制。');
-                  }}
-                >
-                  复制图解
-                </button>
+        </section>
+        {model && (
+          <>
+            <section className={`tune-block tune-only${tool === 'color' ? ' on' : ''}`}>
+              <div className="palette-flow">
+                {model.palettes.map((palette, index) => {
+                  const dots = [...new Set(Object.values(palette.colors))].slice(0, 3);
+                  return (
+                    <button key={palette.id} className={`palette-chip${index === paletteIndex ? ' on' : ''}`} onClick={() => choosePalette(index)}>
+                      {dots.map((hex) => (
+                        <i key={hex} style={{ background: hex }} />
+                      ))}
+                      {palette.name}
+                    </button>
+                  );
+                })}
               </div>
-            </>
+            </section>
+            <section className={`tune-block tune-only${tool === 'parts' ? ' on' : ''}`}>
+              <div className="part-flow">
+                {model.parts.map((part) => (
+                  <button key={part.id} className={`part-chip${part.id === selected ? ' on' : ''}`} onClick={() => setSelected(part.id)}>
+                    <i style={{ background: colors[part.id] }} />
+                    {part.name}
+                  </button>
+                ))}
+              </div>
+              {current && (
+                <div className="swatches" aria-label="部件颜色">
+                  {YARNS.map((yarn) => (
+                    <button
+                      type="button"
+                      key={yarn.id}
+                      className={colors[current.id]?.toLowerCase() === yarn.hex.toLowerCase() ? 'on' : ''}
+                      style={{ background: yarn.hex }}
+                      aria-label={yarn.name}
+                      onClick={() => setColors((prev) => ({ ...prev, [current.id]: yarn.hex }))}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+            <section className={`tune-block tune-only${tool === 'size' ? ' on' : ''}`}>
+              <label className="metric">
+                {sizeCm} cm
+                <input type="range" min={6} max={24} value={sizeCm} onChange={(event) => setSizeCm(Number(event.target.value))} />
+              </label>
+              <div className="chips">
+                {[3, 4, 5].map((mm) => (
+                  <button key={mm} className={yarnMm === mm ? 'on' : ''} onClick={() => setYarnMm(mm)}>
+                    {mm} mm
+                  </button>
+                ))}
+              </div>
+            </section>
+            {plan && (
+              <section className={`tune-block pattern-only${tool === 'pattern' || pane === 'pattern' ? ' on' : ''}`}>
+                <p className="ok">约 {estimateYarn(plan.lengthCm, yarnMm >= 5 ? 'worsted' : 'sport').meters.toFixed(0)} 米</p>
+                <pre>{plan.pattern}</pre>
+              </section>
+            )}
+          </>
+        )}
+        {notice && <p className="nudge">{notice}</p>}
+      </div>
+      {model && (
+        <div className="phone-tools">
+          <button className={tool === 'color' ? 'on' : ''} onClick={() => setTool('color')}>配色</button>
+          <button className={tool === 'parts' ? 'on' : ''} onClick={() => setTool('parts')}>部件</button>
+          <button className={tool === 'size' ? 'on' : ''} onClick={() => setTool('size')}>尺寸</button>
+          <button className={tool === 'source' ? 'on' : ''} onClick={() => setTool('source')}>换模型</button>
+          {view === 'yarn' && (
+            <button className={tool === 'pattern' ? 'on' : ''} onClick={() => setTool('pattern')}>图解</button>
           )}
-        </>
+        </div>
       )}
-      {notice && <p className="nudge">{notice}</p>}
-      <button className="texty" onClick={() => go({ name: 'compose' })}>
-        回到构织台
-      </button>
+      <footer className="work-foot">
+        {!model && (
+          <button className="primary" disabled={busy} onClick={() => void generate(prompt)}>
+            {busy ? '正在成形…' : '生成三维模型'}
+          </button>
+        )}
+        {model && view === 'mesh' && (
+          <>
+            <button className="primary" onClick={() => setView('yarn')}>
+              转为钩织
+            </button>
+            <button onClick={() => downloadStl(model, sizeCm)}>导出 STL</button>
+          </>
+        )}
+        {model && view === 'yarn' && (
+          <>
+            <button className="primary" onClick={() => follow(model, plan, go)}>
+              跟着钩
+            </button>
+            <button onClick={copyPattern}>复制图解</button>
+          </>
+        )}
+      </footer>
     </div>
   );
 }
