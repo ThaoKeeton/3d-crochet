@@ -148,4 +148,7 @@ export interface Settings {
   speed: number;
   reduceMotion: boolean;
   hintSeen: boolean;
+  aiBase?: string;
+  aiModel?: string;
+  aiKey?: string;
 }

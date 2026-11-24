@@ -14,6 +14,7 @@ export type Route =
   | { name: 'make' }
   | { name: 'project'; id: string }
   | { name: 'compose' }
+  | { name: 'sculpt'; prompt?: string; yarn?: boolean }
   | { name: 'mine' };
 
 interface Progress {
@@ -99,6 +100,7 @@ function parseRoute(hash: string): Route {
   if (head === 'learn') return { name: 'learn' };
   if (head === 'make' && id) return { name: 'project', id };
   if (head === 'make') return { name: 'make' };
+  if (head === 'compose' && id === 'model') return { name: 'sculpt', prompt: parts[2] ? decodeURIComponent(parts[2]) : undefined, yarn: parts[3] === 'yarn' };
   if (head === 'compose' || head === 'p') return { name: 'compose' };
   if (head === 'mine') return { name: 'mine' };
   return { name: 'learn' };
@@ -108,6 +110,10 @@ function routeHash(route: Route): string {
   if (route.name === 'lesson') return `#/learn/${route.id}`;
   if (route.name === 'project') return `#/make/${route.id}`;
   if (route.name === 'make') return '#/make';
+  if (route.name === 'sculpt') {
+    const prompt = route.prompt ? `/${encodeURIComponent(route.prompt)}` : '';
+    return `#/compose/model${prompt}${route.yarn ? '/yarn' : ''}`;
+  }
   if (route.name === 'compose') return '#/compose';
   if (route.name === 'mine') return '#/mine';
   return '#/learn';

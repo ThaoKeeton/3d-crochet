@@ -278,7 +278,21 @@ p { margin: 0.3rem 0; }
 .swatches button { transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1); }
 .swatches button.on { outline: 2px solid var(--ink); outline-offset: 2px; transform: scale(1.08); }
 .form, .field { display: flex; flex-direction: column; gap: 8px; }
-.form input, .form select, .form textarea, .field input {
+.file {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  border-radius: 999px;
+  background: rgba(255, 252, 247, 0.55);
+}
+.file input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+}
+.form input, .form select, .form textarea, .field input, fieldset input {
   border: 1px solid var(--line);
   background: rgba(255, 252, 247, 0.8);
   border-radius: 12px;

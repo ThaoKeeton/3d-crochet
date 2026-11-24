@@ -9,6 +9,7 @@ import {
   buildSlipknot,
   buildSphere,
 } from './motifs';
+import { modelLesson } from './modelLesson';
 import { stepsForGraph } from './teach';
 import type { Graph, TeachStep, WeightId } from './types';
 import { DEFAULT_COASTER, DEFAULT_STRAP } from './yarns';
@@ -224,6 +225,10 @@ export function lessonIndex(): Omit<Lesson, 'graph' | 'steps' | 'spin' | 'color'
 }
 
 export function getLesson(id: string): Lesson {
+  if (id === 'model') {
+    const live = modelLesson();
+    if (live) return live;
+  }
   const hit = built.get(id);
   if (hit) return hit;
   const seed = SEEDS.find((item) => item.id === id) ?? SEEDS[1];

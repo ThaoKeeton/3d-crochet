@@ -12,7 +12,10 @@ import {
   buildSphere,
   buildStrap,
 } from '../src/domain/motifs';
+import { crochetize, smoothCounts } from '../src/domain/crochetize';
+import { exportStl, parseMeshFile, toMesh, uvSphere } from '../src/domain/mesh';
 import { bagPreset, seamIssues, withPreview } from '../src/domain/piece';
+import { sculptFromPrompt } from '../src/domain/sculpt';
 import { stepsForGraph } from '../src/domain/teach';
 import type { Graph } from '../src/domain/types';
 
@@ -146,6 +149,51 @@ svg(buildGranny(4), '/tmp/granny4.svg');
 svg(buildFoundationDemo('dc'), '/tmp/dc.svg');
 svg(buildDisc(4), '/tmp/disc.svg');
 svg(buildMagicRing(), '/tmp/magic.svg');
+
+const spoken = sculptFromPrompt('红黑小熊');
+assert(spoken.spoken, '红黑 is an explicit palette');
+assert(spoken.palettes.length >= 3, 'explicit colors still offer variants');
+const spokenColors = Object.values(spoken.palettes[0].colors).map((hex) => hex.toLowerCase());
+assert(spokenColors.includes('#c23b3b') && spokenColors.includes('#1c1a19'), `红黑小熊 colors ${spokenColors.join(',')}`);
+const plain = sculptFromPrompt('一只小熊挂件');
+assert(!plain.spoken, 'no color words means themed palettes');
+assert(plain.palettes.length >= 3, 'themed palettes');
+for (const palette of plain.palettes) {
+  for (const part of plain.parts) assert(Boolean(palette.colors[part.id]), `${palette.name} missing ${part.name}`);
+}
+const fan = sculptFromPrompt('华晨宇应援公仔');
+assert(fan.palettes[0].name.includes('火星'), `fan palette ${fan.palettes[0].name}`);
+const mint = sculptFromPrompt('薄荷绿和奶白兔耳包');
+const mintColors = Object.values(mint.palettes[0].colors).map((hex) => hex.toLowerCase());
+assert(mintColors.includes('#7ec8bc') && mintColors.includes('#f7f3ea'), `mint colors ${mintColors.join(',')}`);
+
+const sphere = toMesh('s', '球', 'body', uvSphere(4, 6));
+const stl = exportStl([sphere]);
+const parsed = parseMeshFile('ball.stl', stl);
+const triCount = (meshes: { indices: { length: number } }[]) => meshes.reduce((sum, mesh) => sum + mesh.indices.length / 3, 0);
+assert(triCount(parsed) === sphere.indices.length / 3, `stl triangles ${triCount(parsed)}`);
+
+const shaped = smoothCounts([6, 48, 10, 10, 30]);
+for (let i = 1; i < shaped.length; i++) {
+  const cap = Math.max(2, Math.round(shaped[i - 1] * 0.34));
+  assert(Math.abs(shaped[i] - shaped[i - 1]) <= cap, `smooth jump ${shaped[i - 1]} -> ${shaped[i]}`);
+}
+const plan = crochetize(spoken.parts, spoken.palettes[0].colors, 12, 4);
+assert(plan.rounds[0]?.line.includes('魔法环'), plan.rounds[0]?.line ?? 'no round');
+assert(plan.pattern.includes('短针'), 'pattern names the stitch');
+assert(plan.graphs.length === spoken.parts.length, 'each part becomes yarn');
+let previousPart = '';
+let previousCount = 0;
+for (const round of plan.rounds) {
+  if (round.partId !== previousPart) {
+    previousPart = round.partId;
+    previousCount = round.count;
+    continue;
+  }
+  const cap = Math.max(2, Math.round(previousCount * 0.34));
+  assert(Math.abs(round.count - previousCount) <= cap + 0.01, `${round.partName} jump`);
+  previousCount = round.count;
+}
 
 if (failed) {
   console.error(`${failed} failed`);

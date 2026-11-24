@@ -427,6 +427,9 @@ export function ComposeScreen() {
         ))}
       </div>
       <div className="chips">
+        <button className="primary" onClick={() => go({ name: 'sculpt' })}>
+          从三维模型
+        </button>
         <button onClick={() => { setPiece(bagPreset()); setSelected('front'); setNotice(''); }}>四方小袋</button>
         <button onClick={() => { setPiece(coasterPreset()); setSelected('coaster'); }}>杯垫</button>
         <button onClick={() => { setPiece(amigurumiPreset()); setSelected('head'); }}>圆头与耳朵</button>
@@ -671,6 +674,13 @@ export function MineScreen() {
           <input type="checkbox" checked={settings.reduceMotion} onChange={(event) => patchSettings({ reduceMotion: event.target.checked })} />
           减少动效
         </label>
+        <fieldset>
+          <legend>外部 AI 接口，可选</legend>
+          <p className="nudge">不填也能生成模型。填了 OpenAI 兼容接口之后，三维模型会按接口返回的蓝图和多套 palettes 来配色。</p>
+          <input placeholder="接口根地址，例如 https://api.openai.com/v1" value={settings.aiBase ?? ''} onChange={(event) => patchSettings({ aiBase: event.target.value })} />
+          <input placeholder="模型名，例如 gpt-4o-mini" value={settings.aiModel ?? ''} onChange={(event) => patchSettings({ aiModel: event.target.value })} />
+          <input type="password" placeholder="密钥只留在这台设备" value={settings.aiKey ?? ''} onChange={(event) => patchSettings({ aiKey: event.target.value })} autoComplete="off" />
+        </fieldset>
         {!confirm ? (
           <button className="texty danger" onClick={() => setConfirm(true)}>
             清空这台设备上的进度

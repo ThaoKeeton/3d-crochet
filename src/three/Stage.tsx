@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { add, dist, lerp as lerpVec, norm, scale, transformPoint, type Vec3 } from '@/domain/math';
 import { bendPoint, floorPolyline, moduleGraph, seamPolyline, strapArch } from '@/domain/piece';
 import { hookEyePose, overviewPose } from '@/domain/teach';
+import type { TriangleMesh } from '@/domain/mesh';
 import type { Graph, Piece, TeachStep } from '@/domain/types';
 import { useApp } from '@/state/store';
 import { patchPresence } from '@/ui/presence';
@@ -23,7 +24,8 @@ export type World =
   | { kind: 'still'; graph: Graph; color: string; spin: number; hook: boolean }
   | { kind: 'teach'; graph: Graph; color: string; steps: TeachStep[]; play: { current: PlaySnap }; spin: number }
   | { kind: 'make'; graph: Graph; color: string; draw: number; spin: number }
-  | { kind: 'compose'; piece: Piece; selected: string | null };
+  | { kind: 'compose'; piece: Piece; selected: string | null }
+  | { kind: 'sculpt'; parts: TriangleMesh[]; colors: Record<string, string>; view: 'mesh' | 'yarn'; yarns: { id: string; color: string; graph: Graph }[]; selected: string | null; sizeCm: number; yarnMm: number };
 
 function linenTexture() {
   const canvas = document.createElement('canvas');
@@ -283,6 +285,8 @@ function Craft({ quality }: { quality: 'high' | 'low' }) {
     <>
       {world.kind === 'compose' ? (
         <ComposeBody piece={world.piece} selected={world.selected} radial={radial} radius={radius} onSelect={setSelected} onMove={moveModule} />
+      ) : world.kind === 'sculpt' ? (
+        <SculptBody world={world} radial={radial} />
       ) : (
         <group ref={handGroup}>
           <SingleBody world={world} radial={radial} radius={radius} uniforms={uniforms} />
@@ -306,13 +310,55 @@ function Craft({ quality }: { quality: 'high' | 'low' }) {
   );
 }
 
+function SculptBody({ world, radial }: { world: Extract<World, { kind: 'sculpt' }>; radial: number }) {
+  const { setSelected } = useApp();
+  if (world.view === 'yarn') {
+    return (
+      <group>
+        {world.yarns.map((yarn) => (
+          <YarnMesh key={yarn.id} points={graphPoints(yarn.graph.samples)} color={yarn.color} radius={Math.max(0.08, world.yarnMm / 20)} radial={Math.max(8, radial - 4)} />
+        ))}
+      </group>
+    );
+  }
+  return (
+    <group scale={world.sizeCm}>
+      {world.parts.map((part) => (
+        <SculptPart key={part.id} part={part} color={world.colors[part.id] || '#c4624a'} selected={world.selected === part.id} onPick={() => setSelected(part.id)} />
+      ))}
+    </group>
+  );
+}
+
+function SculptPart({ part, color, selected, onPick }: { part: TriangleMesh; color: string; selected: boolean; onPick: () => void }) {
+  const geometry = useMemo(() => {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(part.positions, 3));
+    geo.setIndex(new THREE.BufferAttribute(part.indices, 1));
+    geo.computeVertexNormals();
+    return geo;
+  }, [part]);
+  useEffect(() => () => geometry.dispose(), [geometry]);
+  return (
+    <mesh
+      geometry={geometry}
+      onClick={(event) => {
+        event.stopPropagation();
+        onPick();
+      }}
+    >
+      <meshStandardMaterial color={color} roughness={0.62} metalness={0.02} emissive={selected ? '#5a2e24' : '#000000'} emissiveIntensity={selected ? 0.22 : 0} />
+    </mesh>
+  );
+}
+
 function SingleBody({
   world,
   radial,
   radius,
   uniforms,
 }: {
-  world: Exclude<World, { kind: 'compose' }>;
+  world: Exclude<World, { kind: 'compose' | 'sculpt' }>;
   radial: number;
   radius: number;
   uniforms: YarnUniforms;
@@ -569,6 +615,21 @@ function StillHook({ graph }: { graph: Graph }) {
   );
 }
 
+function sculptBounds(world: Extract<World, { kind: 'sculpt' }>): { center: Vec3; size: number } {
+  if (world.view === 'yarn' && world.yarns.length) {
+    let min: Vec3 = [Infinity, Infinity, Infinity];
+    let max: Vec3 = [-Infinity, -Infinity, -Infinity];
+    for (const yarn of world.yarns) {
+      min = [Math.min(min[0], yarn.graph.min[0]), Math.min(min[1], yarn.graph.min[1]), Math.min(min[2], yarn.graph.min[2])];
+      max = [Math.max(max[0], yarn.graph.max[0]), Math.max(max[1], yarn.graph.max[1]), Math.max(max[2], yarn.graph.max[2])];
+    }
+    const center: Vec3 = [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2];
+    return { center, size: Math.max(max[0] - min[0], max[1] - min[1], max[2] - min[2], 4) };
+  }
+  const center: Vec3 = [0, world.sizeCm * 0.5, 0];
+  return { center, size: world.sizeCm };
+}
+
 function framePoints(points: Vec3[], margin: number): { position: Vec3; target: Vec3; focus: Vec3 } {
   if (!points.length) return { position: [8, 6, 11], target: [0, 2, 0], focus: [0, 2, 0] };
   let min: Vec3 = [...points[0]];
@@ -629,7 +690,8 @@ function CameraRig() {
 
   useFrame((_, dt) => {
     const step = world.kind === 'teach' ? world.play.current.index : -1;
-    const id = `${world.kind}:${cameraMode}:${step}:${settings.hand}`;
+    const sculptKey = world.kind === 'sculpt' ? `${world.view}:${world.sizeCm}:${world.parts.length}` : '';
+    const id = `${world.kind}:${cameraMode}:${step}:${settings.hand}:${sculptKey}`;
     if (signature.current !== id) {
       signature.current = id;
       userOwned.current = false;
@@ -654,6 +716,12 @@ function CameraRig() {
 }
 
 function desiredPose(world: World, mode: CameraMode): { position: Vec3; target: Vec3; focus: Vec3 } {
+  if (world.kind === 'sculpt') {
+    const box = sculptBounds(world);
+    const posed = overviewPose(box.center, Math.max(box.size, 4) * 1.85);
+    const pull = mode === 'hook' ? 0.62 : mode === 'follow' ? 0.8 : 1;
+    return { position: lerpVec(posed.target, posed.camera, pull), target: posed.target, focus: posed.target };
+  }
   if (world.kind === 'compose') {
     const wide: { position: Vec3; target: Vec3; focus: Vec3 } =
       world.piece.modules.some((mod) => mod.form === 'wall')
